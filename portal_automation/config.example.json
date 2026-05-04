@@ -1,0 +1,74 @@
+{
+  "portal": {
+    "base_url": "https://your-university-portal.example.com",
+    "login_url": "https://your-university-portal.example.com/login",
+    "attendance_url": "https://your-university-portal.example.com/attendance",
+    "marks_url": "https://your-university-portal.example.com/marks",
+    "memo_url": "https://your-university-portal.example.com/memo"
+  },
+  "selectors": {
+    "login": {
+      "enrollment_input": "#enrollmentNo",
+      "password_input": "#password",
+      "captcha_input": "#captcha",
+      "submit_button": "button[type='submit']",
+      "logged_in_indicator": "a[href*='logout'], .dashboard, #dashboard",
+      "login_error": ".error, .alert-danger"
+    },
+    "attendance": {
+      "table": "table",
+      "row": "tbody tr",
+      "cell": "td"
+    },
+    "marks": {
+      "table": "table",
+      "row": "tbody tr",
+      "cell": "td"
+    },
+    "memo": {
+      "pdf_links": "a[href$='.pdf'], a[href*='.pdf']",
+      "print_memo": "a, button, input[type='button'], input[type='submit']",
+      "availability_text": "body",
+      "table": "table",
+      "row": "tbody tr",
+      "cell": "td"
+    }
+  },
+  "memo_target": {
+    "year": "1",
+    "semester": "2",
+    "exam_session_keywords": ["april"],
+    "description": "I Year II Semester April memo"
+  },
+  "attendance_options": {
+    "last_week_rows": 3
+  },
+  "link_keywords": {
+    "attendance": ["attendance"],
+    "marks": ["marks", "cie", "ete", "internal", "result"],
+    "memo": ["memo", "marksheet", "grade", "transcript", "result"]
+  },
+  "browser": {
+    "headless_after_login": false,
+    "window_width": 1366,
+    "window_height": 900,
+    "page_load_timeout_seconds": 45,
+    "manual_captcha_timeout_seconds": 180
+  },
+  "timetable": {
+    "url": "https://timetable.sruniv.com/batchReport",
+    "degree": "BTECH-CSE",
+    "year": "First",
+    "batch": "25CAIBTCSB36",
+    "cache_file": "data/timetable.json",
+    "cache_ttl_hours": 4
+  },
+  "monitoring": {
+    "background_enabled": false,
+    "check_interval_minutes": 12,
+    "enabled_sections": ["attendance", "marks", "memo"],
+    "data_file": "data/portal_state.json",
+    "cookies_file": "data/cookies.json",
+    "downloads_dir": "downloads"
+  }
+}
