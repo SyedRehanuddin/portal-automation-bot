@@ -95,11 +95,6 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret.")
 
         payload = await request.json()
-        LOGGER.warning(
-            "WEBHOOK_UPDATE update_id=%s text=%r",
-            payload.get("update_id"),
-            ((payload.get("message") or {}).get("text") or (payload.get("edited_message") or {}).get("text")),
-        )
         update = Update.de_json(payload, telegram_app.bot)
         await telegram_app.process_update(update)
         return {"ok": True}
