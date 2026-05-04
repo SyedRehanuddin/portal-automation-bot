@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 import os
 import re
+import sys
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
+import pytz
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
@@ -21,6 +23,8 @@ from .storage import read_json, write_json
 
 LOGGER = logging.getLogger(__name__)
 
+TIMETABLE_LOGIC_VERSION = "v2_fixed"
+IST = pytz.timezone("Asia/Kolkata")
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 ALL_DAYS = DAYS + ["Saturday", "Sunday"]
 TIMES = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
@@ -33,11 +37,17 @@ class TimetableError(RuntimeError):
 def get_timetable(config: AppConfig, force_refresh: bool = False) -> dict[str, dict[str, dict[str, str]]]:
     cache_path = _cache_path(config)
     cached = read_json(cache_path, {})
-    if not force_refresh and _cache_valid(cached, config):
+    if _debug_disable_cache():
+        LOGGER.warning(
+            "TIMETABLE_LOGIC_VERSION=%s cache disabled for debugging; module=%s",
+            TIMETABLE_LOGIC_VERSION,
+            __file__,
+        )
+    elif not force_refresh and _cache_valid(cached, config):
         return cached.get("data", {})
 
     data = scrape_timetable(config)
-    write_json(cache_path, {"fetched_at": datetime.now().isoformat(timespec="seconds"), "data": data})
+    write_json(cache_path, {"fetched_at": _now_ist().isoformat(timespec="seconds"), "data": data})
     return data
 
 
@@ -140,9 +150,10 @@ def parse_ajax_data(response: dict[str, Any]) -> dict[str, dict[str, dict[str, s
 
 
 def get_current_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> tuple[str, str, dict[str, str]] | None:
-    now = now or datetime.now()
+    now = _coerce_ist(now)
     day = now.strftime("%A")
     if day not in DAYS:
+        _log_time_debug("now", timetable, now, day, matched_slot=None, next_slot=None)
         return None
 
     current_time = now.time()
@@ -150,14 +161,17 @@ def get_current_class(timetable: dict[str, dict[str, dict[str, str]]], now: date
     for slot in _sorted_slots(rows):
         start, end = _slot_range(slot, now)
         if start <= current_time < end:
+            _log_time_debug("now", timetable, now, day, matched_slot=slot, next_slot=None)
             return day, slot, timetable[day][slot]
+    _log_time_debug("now", timetable, now, day, matched_slot=None, next_slot=None)
     return None
 
 
 def get_next_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> tuple[str, str, dict[str, str]] | None:
-    now = now or datetime.now()
+    now = _coerce_ist(now)
     day = now.strftime("%A")
     if day not in DAYS:
+        _log_time_debug("next", timetable, now, day, matched_slot=None, next_slot=None)
         return None
 
     current_time = now.time()
@@ -165,34 +179,38 @@ def get_next_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetim
     for slot in _sorted_slots(rows):
         start = _slot_start_time(slot)
         if start > current_time:
+            _log_time_debug("next", timetable, now, day, matched_slot=None, next_slot=slot)
             return day, slot, timetable[day][slot]
+    _log_time_debug("next", timetable, now, day, matched_slot=None, next_slot=None)
     return None
 
 
 def format_now(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
-    now = now or datetime.now()
+    now = _coerce_ist(now)
     if now.strftime("%A") in {"Saturday", "Sunday"}:
-        return "Holiday"
+        return "Holiday" + _telegram_debug("now", timetable, now, matched_slot=None, next_slot=None)
     current = get_current_class(timetable, now)
+    matched_slot = current[1] if current else None
     if current is None:
-        return "No class right now"
+        return "No class right now" + _telegram_debug("now", timetable, now, matched_slot=None, next_slot=None)
     _, slot, entry = current
-    return _format_class(entry, slot, include_end=True)
+    return _format_class(entry, slot, include_end=True) + _telegram_debug("now", timetable, now, matched_slot=matched_slot, next_slot=None)
 
 
 def format_next(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
-    now = now or datetime.now()
+    now = _coerce_ist(now)
     if now.strftime("%A") in {"Saturday", "Sunday"}:
-        return "Holiday"
+        return "Holiday" + _telegram_debug("next", timetable, now, matched_slot=None, next_slot=None)
     next_class = get_next_class(timetable, now)
+    next_slot = next_class[1] if next_class else None
     if next_class is None:
-        return "No more classes today"
+        return "No more classes today" + _telegram_debug("next", timetable, now, matched_slot=None, next_slot=None)
     _, slot, entry = next_class
-    return "Next Class:\n" + _format_class(entry, slot, include_end=False)
+    return "Next Class:\n" + _format_class(entry, slot, include_end=False) + _telegram_debug("next", timetable, now, matched_slot=None, next_slot=next_slot)
 
 
 def format_today(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
-    now = now or datetime.now()
+    now = _coerce_ist(now)
     day = now.strftime("%A")
     if day in {"Saturday", "Sunday"}:
         return "Holiday"
@@ -300,7 +318,9 @@ def _cache_valid(cached: dict[str, Any], config: AppConfig) -> bool:
         fetched = datetime.fromisoformat(fetched_at)
     except ValueError:
         return False
-    return datetime.now() - fetched < timedelta(hours=ttl_hours)
+    if fetched.tzinfo is None:
+        fetched = IST.localize(fetched)
+    return _now_ist() - fetched.astimezone(IST) < timedelta(hours=ttl_hours)
 
 
 def _entry(subject: str, room_name: str, ltp: str = "") -> dict[str, str]:
@@ -392,6 +412,89 @@ def _slot_range(slot: str, day_time: datetime) -> tuple[time, time]:
 
 def _sorted_slots(rows: dict[str, dict[str, str]]) -> list[str]:
     return sorted(rows, key=_slot_start_time)
+
+
+def _now_ist() -> datetime:
+    return datetime.now(IST)
+
+
+def _coerce_ist(value: datetime | None = None) -> datetime:
+    if value is None:
+        return _now_ist()
+    if value.tzinfo is None:
+        return IST.localize(value)
+    return value.astimezone(IST)
+
+
+def _debug_disable_cache() -> bool:
+    value = os.getenv("TIMETABLE_DISABLE_CACHE", "true").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _slot_debug(rows: dict[str, dict[str, str]], day_time: datetime) -> list[dict[str, str]]:
+    debug_rows: list[dict[str, str]] = []
+    for slot in _sorted_slots(rows):
+        start, end = _slot_range(slot, day_time)
+        entry = rows.get(slot, {})
+        debug_rows.append(
+            {
+                "slot": slot,
+                "start": start.isoformat(timespec="minutes"),
+                "end": end.isoformat(timespec="minutes"),
+                "subject": entry.get("subject", "-"),
+                "room": entry.get("room", "-"),
+            }
+        )
+    return debug_rows
+
+
+def _log_time_debug(
+    intent: str,
+    timetable: dict[str, dict[str, dict[str, str]]],
+    now: datetime,
+    day: str,
+    matched_slot: str | None,
+    next_slot: str | None,
+) -> None:
+    rows = timetable.get(day, {})
+    LOGGER.warning(
+        "TIMETABLE_LOGIC_VERSION=%s intent=%s module=%s imported_module=%s now=%s weekday=%s day_data=%s parsed_slots=%s matched=%s next=%s",
+        TIMETABLE_LOGIC_VERSION,
+        intent,
+        __file__,
+        sys.modules[__name__].__file__,
+        now.isoformat(timespec="seconds"),
+        day,
+        rows,
+        _slot_debug(rows, now),
+        matched_slot,
+        next_slot,
+    )
+
+
+def _telegram_debug(
+    intent: str,
+    timetable: dict[str, dict[str, dict[str, str]]],
+    now: datetime,
+    matched_slot: str | None,
+    next_slot: str | None,
+) -> str:
+    day = now.strftime("%A")
+    rows = timetable.get(day, {})
+    slot_names = [item["slot"] for item in _slot_debug(rows, now)]
+    parsed_ranges = [f"{item['slot']}={item['start']}-{item['end']}" for item in _slot_debug(rows, now)]
+    return (
+        "\n\nDEBUG:\n"
+        f"version={TIMETABLE_LOGIC_VERSION}\n"
+        f"intent={intent}\n"
+        f"module={__file__}\n"
+        f"now={now.isoformat(timespec='seconds')}\n"
+        f"weekday={day}\n"
+        f"slots={slot_names}\n"
+        f"parsed={parsed_ranges}\n"
+        f"matched={matched_slot}\n"
+        f"next={next_slot}"
+    )
 
 
 def _class_type(value: str) -> str:

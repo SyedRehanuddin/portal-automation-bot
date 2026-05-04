@@ -9,6 +9,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from telegram import Update
 
 from .config import load_config
+from . import timetable
 from .telegram_bot import build_application
 
 
@@ -45,6 +46,12 @@ def create_app() -> FastAPI:
     telegram_app = build_application(config)
     webhook_path = _webhook_path()
     secret_token = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    LOGGER.warning(
+        "TIMETABLE_LOGIC_VERSION=%s timetable_module=%s webhook_server_module=%s",
+        timetable.TIMETABLE_LOGIC_VERSION,
+        timetable.__file__,
+        __file__,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -95,4 +102,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

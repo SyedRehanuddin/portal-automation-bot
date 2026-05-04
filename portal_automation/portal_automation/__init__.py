@@ -1,2 +1,0 @@
-"""University portal automation package."""
-

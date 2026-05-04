@@ -4,3 +4,4 @@ python-dotenv>=1.0.1
 python-telegram-bot[job-queue]>=21.10
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
+pytz>=2024.1
