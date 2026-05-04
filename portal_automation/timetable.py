@@ -145,10 +145,11 @@ def get_current_class(timetable: dict[str, dict[str, dict[str, str]]], now: date
     if day not in DAYS:
         return None
 
-    current_minutes = now.hour * 60 + now.minute
-    for slot in sorted(timetable.get(day, {})):
-        start = _slot_minutes(slot)
-        if start <= current_minutes < start + 60:
+    current_time = now.time()
+    rows = timetable.get(day, {})
+    for slot in _sorted_slots(rows):
+        start, end = _slot_range(slot, now)
+        if start <= current_time < end:
             return day, slot, timetable[day][slot]
     return None
 
@@ -159,9 +160,11 @@ def get_next_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetim
     if day not in DAYS:
         return None
 
-    current_minutes = now.hour * 60 + now.minute
-    for slot in sorted(timetable.get(day, {})):
-        if _slot_minutes(slot) > current_minutes:
+    current_time = now.time()
+    rows = timetable.get(day, {})
+    for slot in _sorted_slots(rows):
+        start = _slot_start_time(slot)
+        if start > current_time:
             return day, slot, timetable[day][slot]
     return None
 
@@ -373,8 +376,22 @@ def _normalize_year(value: str) -> str:
 
 
 def _slot_minutes(slot: str) -> int:
-    parsed = time.fromisoformat(slot)
+    parsed = _slot_start_time(slot)
     return parsed.hour * 60 + parsed.minute
+
+
+def _slot_start_time(slot: str) -> time:
+    return datetime.strptime(slot.strip(), "%H:%M").time()
+
+
+def _slot_range(slot: str, day_time: datetime) -> tuple[time, time]:
+    start_datetime = datetime.combine(day_time.date(), _slot_start_time(slot))
+    end_datetime = start_datetime + timedelta(hours=1)
+    return start_datetime.time(), end_datetime.time()
+
+
+def _sorted_slots(rows: dict[str, dict[str, str]]) -> list[str]:
+    return sorted(rows, key=_slot_start_time)
 
 
 def _class_type(value: str) -> str:
