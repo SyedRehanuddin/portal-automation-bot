@@ -155,6 +155,7 @@ async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update, config):
         return
 
+    await _reply(update, "Checking for changes...")
     try:
         messages, memo_pdf = await _run_check_locked(context, config, compare=True)
     except Exception as exc:
@@ -165,6 +166,9 @@ async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _send_messages(context, config.credentials.telegram_chat_id, messages)
         if memo_pdf:
             await _send_document(context, config.credentials.telegram_chat_id, memo_pdf, "New semester memo PDF")
+        return
+
+    await _reply(update, "No changes found.")
 
 
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
