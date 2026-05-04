@@ -5,7 +5,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urljoin
 
 from selenium import webdriver
@@ -23,8 +23,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class PortalBrowser:
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, captcha_handler: Callable[["PortalBrowser"], str] | None = None) -> None:
         self.config = config
+        self.captcha_handler = captcha_handler
         self.driver: webdriver.Chrome | None = None
         self.cookies_file = config.resolve_path("cookies_file")
         self.downloads_dir = config.resolve_path("downloads_dir")
@@ -76,7 +77,10 @@ class PortalBrowser:
         if self._try_cookie_login():
             return
         if _headless_enabled():
-            raise RuntimeError("Saved portal cookies are missing or expired. Run locally once with visible Chrome to refresh data/cookies.json, then redeploy or provide persistent storage.")
+            if self.captcha_handler is None:
+                raise RuntimeError("Saved portal cookies are missing or expired. Run locally once with visible Chrome to refresh data/cookies.json, then redeploy or provide persistent storage.")
+            self.telegram_captcha_login()
+            return
         self.manual_login()
 
     def open_authenticated(self, url: str) -> None:
@@ -85,7 +89,7 @@ class PortalBrowser:
         time.sleep(1)
         if self.is_session_expired():
             LOGGER.info("Session expired while opening %s; logging in again.", url)
-            self.manual_login()
+            self.ensure_logged_in()
             self.driver_or_raise.get(url)
 
     def open_first_matching_link(self, keywords: list[str]) -> bool:
@@ -149,6 +153,40 @@ class PortalBrowser:
         self._click_submit_when_ready(login.get("submit_button"), timeout)
         self._wait_until_logged_in(timeout)
         self.save_cookies()
+
+    def telegram_captcha_login(self) -> None:
+        if self.captcha_handler is None:
+            raise RuntimeError("Telegram CAPTCHA login was requested without a CAPTCHA handler.")
+
+        driver = self.driver_or_raise
+        login = self.config.selectors["login"]
+        LOGGER.info("Opening login page for Telegram-assisted CAPTCHA login.")
+        driver.get(self.config.portal["login_url"])
+
+        self._type_if_present(login["enrollment_input"], self.config.credentials.enrollment_number)
+        self._type_if_present(login["password_input"], self.config.credentials.password)
+
+        captcha_selector = login.get("captcha_input")
+        if not captcha_selector:
+            raise RuntimeError("CAPTCHA selector is not configured.")
+
+        captcha = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, captcha_selector)))
+        captcha.click()
+        captcha_code = self.captcha_handler(self).strip()
+        if not captcha_code:
+            raise RuntimeError("Empty CAPTCHA was provided.")
+        captcha.clear()
+        captcha.send_keys(captcha_code)
+
+        timeout = int(self.config.browser.get("manual_captcha_timeout_seconds", 180))
+        self._click_submit_when_ready(login.get("submit_button"), timeout)
+        self._wait_until_logged_in(timeout)
+        self.save_cookies()
+
+    def save_login_screenshot(self, path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.driver_or_raise.save_screenshot(str(path))
+        return path
 
     def save_cookies(self) -> None:
         cookies = _dedupe_cookies(self.driver_or_raise.get_cookies())

@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+from queue import Empty, Queue
 from typing import Any
 
 from telegram import Update
@@ -73,6 +74,31 @@ async def total(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def all_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply_summary(update, context, "all")
+
+
+async def captcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+
+    code = " ".join(context.args).strip()
+    if not code:
+        await _reply(update, "Send it like: /captcha ABCD")
+        return
+
+    request = context.application.bot_data.get("captcha_request")
+    if not isinstance(request, dict) or not isinstance(request.get("queue"), Queue):
+        await _reply(update, "No CAPTCHA is waiting right now. Run /check or /analyze first.")
+        return
+
+    try:
+        request["queue"].put_nowait(code)
+    except Exception:
+        await _reply(update, "I could not accept that CAPTCHA. Try /check or /analyze again.")
+        return
+
+    context.application.bot_data.pop("captcha_request", None)
+    await _reply(update, "CAPTCHA received. Continuing portal login...")
 
 
 async def timetable(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -207,11 +233,15 @@ async def monitor_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             await _send_document(context, config.credentials.telegram_chat_id, memo_pdf, "New semester memo PDF")
 
 
-def run_portal_check(config: AppConfig, compare: bool = True) -> tuple[list[str], Path | None]:
+def run_portal_check(
+    config: AppConfig,
+    compare: bool = True,
+    captcha_handler: Any = None,
+) -> tuple[list[str], Path | None]:
     state_file = config.resolve_path("data_file")
     old_state = read_json(state_file, {})
 
-    with PortalBrowser(config) as browser:
+    with PortalBrowser(config, captcha_handler=captcha_handler) as browser:
         extractor = PortalExtractor(browser)
         new_data = extractor.collect_all()
 
@@ -247,7 +277,8 @@ async def _run_check_locked(
         context.application.bot_data["check_lock"] = lock
 
     async with lock:
-        return await asyncio.to_thread(run_portal_check, config, compare)
+        captcha_handler = _build_captcha_handler(context, config)
+        return await asyncio.to_thread(run_portal_check, config, compare, captcha_handler)
 
 
 async def _reply_summary(update: Update, context: ContextTypes.DEFAULT_TYPE, section: str) -> None:
@@ -326,6 +357,38 @@ def build_assistant_response(state: dict[str, Any], section: str) -> str:
     return build_summary(state, section)
 
 
+def _build_captcha_handler(context: ContextTypes.DEFAULT_TYPE, config: AppConfig) -> Any:
+    loop = asyncio.get_running_loop()
+    chat_id = config.credentials.telegram_chat_id
+
+    def handle_captcha(browser: PortalBrowser) -> str:
+        screenshot_path = browser.save_login_screenshot(config.root_dir / "data" / "captcha_login.png")
+        queue: Queue[str] = Queue(maxsize=1)
+
+        async def publish_request() -> None:
+            context.application.bot_data["captcha_request"] = {"queue": queue}
+            with screenshot_path.open("rb") as image:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=image,
+                    caption="Portal login CAPTCHA required. Reply with /captcha CODE within 3 minutes.",
+                )
+
+        asyncio.run_coroutine_threadsafe(publish_request(), loop).result(timeout=30)
+
+        try:
+            return queue.get(timeout=int(config.browser.get("manual_captcha_timeout_seconds", 180)))
+        except Empty as exc:
+            asyncio.run_coroutine_threadsafe(_clear_captcha_request(context), loop).result(timeout=10)
+            raise TimeoutError("CAPTCHA timed out. Run /check or /analyze again.") from exc
+
+    return handle_captcha
+
+
+async def _clear_captcha_request(context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.application.bot_data.pop("captcha_request", None)
+
+
 async def _reply(update: Update, text: str) -> None:
     if update.effective_message is None:
         return
@@ -378,7 +441,8 @@ def _menu_message() -> str:
         "/timetable - full weekly timetable\n"
         "/today - today's schedule\n"
         "/now - current class\n"
-        "/next - next class"
+        "/next - next class\n"
+        "/captcha CODE - answer portal CAPTCHA when asked"
     )
 
 
@@ -446,7 +510,7 @@ def _short_error(exc: BaseException) -> str:
 
 
 def build_application(config: AppConfig) -> Application:
-    application = Application.builder().token(config.credentials.telegram_bot_token).build()
+    application = Application.builder().token(config.credentials.telegram_bot_token).concurrent_updates(True).build()
     application.bot_data["config"] = config
 
     application.add_handler(CommandHandler("start", start))
@@ -456,6 +520,7 @@ def build_application(config: AppConfig) -> Application:
     application.add_handler(CommandHandler("memo", memo))
     application.add_handler(CommandHandler("total", total))
     application.add_handler(CommandHandler("all", all_data))
+    application.add_handler(CommandHandler("captcha", captcha))
     application.add_handler(CommandHandler("check", check_now))
     application.add_handler(CommandHandler("analyze", analyze))
     application.add_handler(CommandHandler("schedule", schedule))
