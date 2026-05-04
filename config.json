@@ -1,0 +1,76 @@
+{
+  "portal": {
+    "base_url": "https://sraap.in/",
+    "login_url": "https://sraap.in/student_login.php",
+    "attendance_url": "https://sraap.in/student/dash_board.php",
+    "marks_url": "https://sraap.in/student/student_mid1.php",
+    "memo_url": "https://sraap.in/student/student_sem_wise_memo.php"
+  },
+  "selectors": {
+    "login": {
+      "enrollment_input": "#user_id",
+      "password_input": "#user_password",
+      "captcha_input": "#token",
+      "submit_button": "button[name='submit']",
+      "logged_in_indicator": "a[href*='logout'], a[href*='student_logout'], .main-sidebar, .content-wrapper, .dashboard",
+      "login_error": ".error, .alert, .alert-danger, .text-danger"
+    },
+    "attendance": {
+      "table": "table",
+      "row": "tbody tr",
+      "cell": "td",
+      "header": "thead th"
+    },
+    "marks": {
+      "table": "table",
+      "row": "tbody tr",
+      "cell": "td",
+      "header": "thead th"
+    },
+    "memo": {
+      "pdf_links": "a[href$='.pdf'], a[href*='.pdf']",
+      "print_memo": "a, button, input[type='button'], input[type='submit']",
+      "availability_text": "body",
+      "table": "table",
+      "row": "tbody tr",
+      "cell": "td"
+    }
+  },
+  "memo_target": {
+    "year": "1",
+    "semester": "2",
+    "exam_session_keywords": ["april"],
+    "description": "I Year II Semester April memo"
+  },
+  "attendance_options": {
+    "last_week_rows": 3
+  },
+  "link_keywords": {
+    "attendance": ["attendance"],
+    "marks": ["marks", "cie", "ete", "internal", "result"],
+    "memo": ["memo", "marksheet", "grade", "transcript", "result"]
+  },
+  "browser": {
+    "headless_after_login": false,
+    "window_width": 1366,
+    "window_height": 900,
+    "page_load_timeout_seconds": 45,
+    "manual_captcha_timeout_seconds": 180
+  },
+  "timetable": {
+    "url": "https://timetable.sruniv.com/batchReport",
+    "degree": "BTECH-CSE",
+    "year": "First",
+    "batch": "25CAIBTCSB36",
+    "cache_file": "data/timetable.json",
+    "cache_ttl_hours": 4
+  },
+  "monitoring": {
+    "background_enabled": false,
+    "check_interval_minutes": 12,
+    "enabled_sections": ["attendance", "marks", "memo"],
+    "data_file": "data/portal_state.json",
+    "cookies_file": "data/cookies.json",
+    "downloads_dir": "downloads"
+  }
+}
