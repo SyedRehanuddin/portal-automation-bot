@@ -61,11 +61,12 @@ def create_app() -> FastAPI:
         if os.getenv("SKIP_SET_WEBHOOK", "").strip().lower() not in {"1", "true", "yes"}:
             url = _webhook_url(webhook_path)
             LOGGER.info("Setting Telegram webhook to %s", url)
+            drop_pending_updates = os.getenv("TELEGRAM_DROP_PENDING_UPDATES", "true").strip().lower() in {"1", "true", "yes", "on"}
             await telegram_app.bot.set_webhook(
                 url=url,
                 allowed_updates=Update.ALL_TYPES,
                 secret_token=secret_token or None,
-                drop_pending_updates=False,
+                drop_pending_updates=drop_pending_updates,
             )
 
         try:
@@ -94,6 +95,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret.")
 
         payload = await request.json()
+        LOGGER.warning(
+            "WEBHOOK_UPDATE update_id=%s text=%r",
+            payload.get("update_id"),
+            ((payload.get("message") or {}).get("text") or (payload.get("edited_message") or {}).get("text")),
+        )
         update = Update.de_json(payload, telegram_app.bot)
         await telegram_app.process_update(update)
         return {"ok": True}

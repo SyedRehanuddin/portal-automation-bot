@@ -15,6 +15,8 @@ services:
         value: Asia/Kolkata
       - key: TIMETABLE_DISABLE_CACHE
         value: "true"
+      - key: TELEGRAM_DROP_PENDING_UPDATES
+        value: "true"
       - key: TELEGRAM_WEBHOOK_PATH
         value: /telegram/webhook
       - key: ENROLLMENT_NUMBER

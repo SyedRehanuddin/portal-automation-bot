@@ -76,22 +76,27 @@ async def all_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def timetable(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log_route(update, "timetable")
     await _reply_timetable(update, context, "week")
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log_route(update, "today")
     await _reply_timetable(update, context, "today")
 
 
 async def now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log_route(update, "now")
     await _reply_timetable(update, context, "now")
 
 
 async def next_class(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log_route(update, "next")
     await _reply_timetable(update, context, "next")
 
 
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _log_route(update, "schedule")
     config = _config(context)
     if not _authorized(update, config):
         return
@@ -284,13 +289,13 @@ async def _reply_timetable(update: Update, context: ContextTypes.DEFAULT_TYPE, i
         return
 
     if intent == "week":
-        await _reply(update, format_week(timetable_data))
+        await _reply(update, _route_debug(update, "timetable", intent) + "\n\n" + format_week(timetable_data))
     elif intent == "today":
-        await _reply(update, format_today(timetable_data))
+        await _reply(update, _route_debug(update, "today", intent) + "\n\n" + format_today(timetable_data))
     elif intent == "now":
-        await _reply(update, format_now(timetable_data))
+        await _reply(update, _route_debug(update, "now", intent) + "\n\n" + format_now(timetable_data))
     elif intent == "next":
-        await _reply(update, format_next(timetable_data))
+        await _reply(update, _route_debug(update, "next", intent) + "\n\n" + format_next(timetable_data))
     elif intent == "room":
         await _reply(update, format_current_room(timetable_data))
 
@@ -477,6 +482,30 @@ def _background_monitor_enabled(config: AppConfig) -> bool:
     if env_value:
         return env_value in {"1", "true", "yes", "on"}
     return bool(config.monitoring.get("background_enabled", False))
+
+
+def _log_route(update: Update, handler: str) -> None:
+    message = update.effective_message
+    text = message.text if message else ""
+    LOGGER.warning(
+        "COMMAND_ROUTE handler=%s text=%r chat_id=%s update_id=%s",
+        handler,
+        text,
+        update.effective_chat.id if update.effective_chat else None,
+        update.update_id,
+    )
+
+
+def _route_debug(update: Update, handler: str, intent: str) -> str:
+    message = update.effective_message
+    text = message.text if message else ""
+    return (
+        "ROUTE_DEBUG:\n"
+        f"handler={handler}\n"
+        f"intent={intent}\n"
+        f"text={_escape_text(text)}\n"
+        f"update_id={update.update_id}"
+    )
 
 
 def main() -> int:
