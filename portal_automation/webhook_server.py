@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -96,10 +97,18 @@ def create_app() -> FastAPI:
 
         payload = await request.json()
         update = Update.de_json(payload, telegram_app.bot)
-        await telegram_app.process_update(update)
+        task = asyncio.create_task(telegram_app.process_update(update))
+        task.add_done_callback(_log_update_error)
         return {"ok": True}
 
     return app
+
+
+def _log_update_error(task: asyncio.Task[None]) -> None:
+    try:
+        task.result()
+    except Exception:
+        LOGGER.exception("Telegram update processing failed.")
 
 
 app = create_app()

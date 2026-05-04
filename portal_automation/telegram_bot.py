@@ -87,15 +87,17 @@ async def captcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     request = context.application.bot_data.get("captcha_request")
-    if not isinstance(request, dict) or not isinstance(request.get("queue"), Queue):
+    if not isinstance(request, dict):
         await _reply(update, "No CAPTCHA is waiting right now. Run /check or /analyze first.")
         return
 
-    try:
-        request["queue"].put_nowait(code)
-    except Exception:
-        await _reply(update, "I could not accept that CAPTCHA. Try /check or /analyze again.")
-        return
+    request["answer"] = code
+    queue = request.get("queue")
+    if isinstance(queue, Queue):
+        try:
+            queue.put_nowait(code)
+        except Exception:
+            LOGGER.info("CAPTCHA answer was stored but could not be queued immediately.")
 
     context.application.bot_data.pop("captcha_request", None)
     await _reply(update, "CAPTCHA received. Continuing portal login...")
@@ -364,23 +366,35 @@ def _build_captcha_handler(context: ContextTypes.DEFAULT_TYPE, config: AppConfig
     def handle_captcha(browser: PortalBrowser) -> str:
         screenshot_path = browser.save_login_screenshot(config.root_dir / "data" / "captcha_login.png")
         queue: Queue[str] = Queue(maxsize=1)
+        request: dict[str, Any] = {"queue": queue, "answer": None}
 
         async def publish_request() -> None:
-            context.application.bot_data["captcha_request"] = {"queue": queue}
+            context.application.bot_data["captcha_request"] = request
             with screenshot_path.open("rb") as image:
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=image,
-                    caption="Portal login CAPTCHA required. Reply with /captcha CODE within 3 minutes.",
+                    caption="Portal login CAPTCHA required. Reply with /captcha CODE within 5 minutes.",
                 )
 
         asyncio.run_coroutine_threadsafe(publish_request(), loop).result(timeout=30)
 
+        timeout = int(config.browser.get("manual_captcha_timeout_seconds", 300))
+        end_at = loop.time() + timeout
         try:
-            return queue.get(timeout=int(config.browser.get("manual_captcha_timeout_seconds", 180)))
+            while loop.time() < end_at:
+                answer = request.get("answer")
+                if isinstance(answer, str) and answer.strip():
+                    return answer
+                try:
+                    return queue.get(timeout=1)
+                except Empty:
+                    continue
         except Empty as exc:
             asyncio.run_coroutine_threadsafe(_clear_captcha_request(context), loop).result(timeout=10)
             raise TimeoutError("CAPTCHA timed out. Run /check or /analyze again.") from exc
+        asyncio.run_coroutine_threadsafe(_clear_captcha_request(context), loop).result(timeout=10)
+        raise TimeoutError("CAPTCHA timed out. Run /check or /analyze again.")
 
     return handle_captcha
 
