@@ -10,9 +10,9 @@ from queue import Empty, Queue
 from typing import Any
 
 import pytz
-from telegram import Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 from selenium.common.exceptions import WebDriverException
 
 from .browser import PortalBrowser, validate_cookie_session
@@ -45,11 +45,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await _reply(
         update,
-        "Bot started.\n\n"
-        "Ask me: attendance, marks, memo, or everything.\n"
-        "Use /analyze to scan and show the menu.\n"
-        "Use /check to silently alert only if something changed.\n"
-        "Use /schedule to refresh timetable from website.",
+        _dashboard_message(),
+        reply_markup=_dashboard_keyboard(),
     )
 
 
@@ -147,6 +144,7 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/today - today's schedule\n"
         "/now - current class\n"
         "/next - next class",
+        reply_markup=_timetable_keyboard(),
     )
 
 
@@ -218,7 +216,48 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     await _reply(update, "Checked everything ✅")
-    await _reply(update, _menu_message())
+    await _reply(update, _menu_message(), reply_markup=_dashboard_keyboard())
+
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    action = (query.data or "").removeprefix("ui:")
+    if action == "menu":
+        await _reply(update, _dashboard_message(), reply_markup=_dashboard_keyboard())
+    elif action == "attendance":
+        await _reply_summary(update, context, "attendance")
+    elif action == "total":
+        await _reply_summary(update, context, "total")
+    elif action == "marks":
+        await _reply_summary(update, context, "marks")
+    elif action == "memo":
+        await _reply_summary(update, context, "memo")
+    elif action == "all":
+        await _reply_summary(update, context, "all")
+    elif action == "today":
+        await _reply_timetable(update, context, "today")
+    elif action == "now":
+        await _reply_timetable(update, context, "now")
+    elif action == "next":
+        await _reply_timetable(update, context, "next")
+    elif action == "week":
+        await _reply_timetable(update, context, "week")
+    elif action == "check":
+        await check_now(update, context)
+    elif action == "analyze":
+        await analyze(update, context)
+    elif action == "schedule":
+        await schedule(update, context)
+    else:
+        await _reply(update, "Unknown button. Use /start to open the dashboard.")
 
 
 async def monitor_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -321,7 +360,7 @@ async def _reply_summary(update: Update, context: ContextTypes.DEFAULT_TYPE, sec
         await _reply(update, "No saved data yet. Run /analyze to fetch the latest portal data first.")
         return
 
-    await _reply(update, build_assistant_response(state, section))
+    await _reply(update, build_assistant_response(state, section), reply_markup=_portal_keyboard())
 
 
 async def _reply_timetable(update: Update, context: ContextTypes.DEFAULT_TYPE, intent: str) -> None:
@@ -340,15 +379,15 @@ async def _reply_timetable(update: Update, context: ContextTypes.DEFAULT_TYPE, i
         return
 
     if intent == "week":
-        await _reply(update, format_week(timetable_data))
+        await _reply(update, format_week(timetable_data), reply_markup=_timetable_keyboard())
     elif intent == "today":
-        await _reply(update, format_today(timetable_data))
+        await _reply(update, format_today(timetable_data), reply_markup=_timetable_keyboard())
     elif intent == "now":
-        await _reply(update, format_now(timetable_data))
+        await _reply(update, format_now(timetable_data), reply_markup=_timetable_keyboard())
     elif intent == "next":
-        await _reply(update, format_next(timetable_data))
+        await _reply(update, format_next(timetable_data), reply_markup=_timetable_keyboard())
     elif intent == "room":
-        await _reply(update, format_current_room(timetable_data))
+        await _reply(update, format_current_room(timetable_data), reply_markup=_timetable_keyboard())
 
 
 async def _get_timetable_locked(
@@ -451,11 +490,17 @@ async def _clear_captcha_request(context: ContextTypes.DEFAULT_TYPE) -> None:
     context.application.bot_data.pop("captcha_request", None)
 
 
-async def _reply(update: Update, text: str) -> None:
+async def _reply(update: Update, text: str, reply_markup: InlineKeyboardMarkup | None = None) -> None:
     if update.effective_message is None:
         return
     for chunk in _chunks(text):
-        await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        await update.effective_message.reply_text(
+            chunk,
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
+            reply_markup=reply_markup,
+        )
+        reply_markup = None
 
 
 async def _send_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: str, messages: list[str]) -> None:
@@ -487,6 +532,84 @@ def _authorized(update: Update, config: AppConfig) -> bool:
 def _help_message() -> str:
     return "<b>SRAAP bot commands</b>\n" + _menu_message() + "\n/help - show this menu\n\n" + (
         "You can also type: start, analyze, check, attendance, marks, memo, all, everything."
+    )
+
+
+def _dashboard_message() -> str:
+    return (
+        "<b>Portler Dashboard</b>\n"
+        "Tap a button or type a command.\n\n"
+        "Portal data buttons use saved data unless you tap Analyze or Check.\n"
+        "Timetable buttons use the latest saved timetable."
+    )
+
+
+def _dashboard_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Attendance", callback_data="ui:attendance"),
+                InlineKeyboardButton("Total", callback_data="ui:total"),
+            ],
+            [
+                InlineKeyboardButton("Marks", callback_data="ui:marks"),
+                InlineKeyboardButton("Memo", callback_data="ui:memo"),
+            ],
+            [
+                InlineKeyboardButton("Today", callback_data="ui:today"),
+                InlineKeyboardButton("Now", callback_data="ui:now"),
+                InlineKeyboardButton("Next", callback_data="ui:next"),
+            ],
+            [
+                InlineKeyboardButton("Full Week", callback_data="ui:week"),
+                InlineKeyboardButton("All Data", callback_data="ui:all"),
+            ],
+            [
+                InlineKeyboardButton("Analyze", callback_data="ui:analyze"),
+                InlineKeyboardButton("Check", callback_data="ui:check"),
+            ],
+            [
+                InlineKeyboardButton("Refresh Timetable", callback_data="ui:schedule"),
+            ],
+        ]
+    )
+
+
+def _portal_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Attendance", callback_data="ui:attendance"),
+                InlineKeyboardButton("Total", callback_data="ui:total"),
+            ],
+            [
+                InlineKeyboardButton("Marks", callback_data="ui:marks"),
+                InlineKeyboardButton("Memo", callback_data="ui:memo"),
+            ],
+            [
+                InlineKeyboardButton("Analyze", callback_data="ui:analyze"),
+                InlineKeyboardButton("Check", callback_data="ui:check"),
+            ],
+            [
+                InlineKeyboardButton("Menu", callback_data="ui:menu"),
+            ],
+        ]
+    )
+
+
+def _timetable_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Today", callback_data="ui:today"),
+                InlineKeyboardButton("Now", callback_data="ui:now"),
+                InlineKeyboardButton("Next", callback_data="ui:next"),
+            ],
+            [
+                InlineKeyboardButton("Full Week", callback_data="ui:week"),
+                InlineKeyboardButton("Menu", callback_data="ui:menu"),
+            ],
+        ]
     )
 
 
@@ -575,6 +698,7 @@ def build_application(config: AppConfig) -> Application:
     application = Application.builder().token(config.credentials.telegram_bot_token).concurrent_updates(True).build()
     application.bot_data["config"] = config
 
+    application.add_handler(CallbackQueryHandler(button_handler, pattern=r"^ui:"))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("attendance", attendance))
@@ -601,6 +725,29 @@ def build_application(config: AppConfig) -> Application:
             name="sraap_monitor",
         )
     return application
+
+
+async def setup_bot_commands(application: Application) -> None:
+    try:
+        await application.bot.set_my_commands(
+            [
+                BotCommand("start", "Open dashboard"),
+                BotCommand("analyze", "Refresh portal data"),
+                BotCommand("check", "Check and report changes"),
+                BotCommand("attendance", "Attendance summary"),
+                BotCommand("total", "Total attendance"),
+                BotCommand("marks", "CIE / ETE marks"),
+                BotCommand("memo", "Semester memo status"),
+                BotCommand("all", "All saved data"),
+                BotCommand("schedule", "Refresh timetable"),
+                BotCommand("today", "Today's schedule"),
+                BotCommand("now", "Current class"),
+                BotCommand("next", "Next class"),
+                BotCommand("timetable", "Full weekly timetable"),
+            ]
+        )
+    except Exception:
+        LOGGER.exception("Failed to update Telegram command menu.")
 
 
 def _background_monitor_enabled(config: AppConfig) -> bool:
