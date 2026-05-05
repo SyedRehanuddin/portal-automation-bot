@@ -543,7 +543,6 @@ def _dashboard_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton("Full Week", callback_data="ui:week"),
-                InlineKeyboardButton("Menu", callback_data="ui:menu"),
             ],
             [
                 InlineKeyboardButton("Analyze", callback_data="ui:analyze"),
