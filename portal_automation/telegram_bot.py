@@ -15,10 +15,11 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from selenium.common.exceptions import WebDriverException
 
-from .browser import PortalBrowser
+from .browser import PortalBrowser, validate_cookie_session
 from .config import AppConfig, load_config
 from .diffing import build_change_messages
 from .extractors import PortalExtractor
+from .requests_extractor import RequestsPortalExtractor
 from .send_summary import build_summary
 from .storage import read_json, write_json
 from .timetable import (
@@ -246,9 +247,7 @@ def run_portal_check(
     state_file = config.resolve_path("data_file")
     old_state = read_json(state_file, {})
 
-    with PortalBrowser(config, captcha_handler=captcha_handler) as browser:
-        extractor = PortalExtractor(browser)
-        new_data = extractor.collect_all()
+    new_data = _collect_portal_data(config, captcha_handler)
 
     new_state = {
         "last_updated_at": datetime.now(IST).isoformat(timespec="seconds"),
@@ -270,6 +269,30 @@ def run_portal_check(
     messages = build_change_messages(old_state, new_state)
     write_json(state_file, new_state)
     return messages, _memo_pdf_path(new_state) if messages else None
+
+
+def _collect_portal_data(config: AppConfig, captcha_handler: Any = None) -> dict[str, Any]:
+    if not config.raw.get("requests_extraction", {}).get("enabled", True):
+        LOGGER.info("Requests portal extraction is disabled; using Selenium.")
+        with PortalBrowser(config, captcha_handler=captcha_handler) as browser:
+            extractor = PortalExtractor(browser)
+            return extractor.collect_all()
+
+    validation = validate_cookie_session(config)
+    if validation is True:
+        try:
+            LOGGER.info("Collecting portal data with requests.")
+            return RequestsPortalExtractor(config).collect_all()
+        except Exception as exc:
+            LOGGER.info("Requests portal extraction failed; falling back to Selenium: %s", exc)
+    elif validation is False:
+        LOGGER.info("Requests validation says portal cookies are expired; using Selenium/CAPTCHA flow.")
+    else:
+        LOGGER.info("Requests validation was inconclusive; using Selenium fallback.")
+
+    with PortalBrowser(config, captcha_handler=captcha_handler) as browser:
+        extractor = PortalExtractor(browser)
+        return extractor.collect_all()
 
 
 async def _run_check_locked(

@@ -229,30 +229,7 @@ class PortalBrowser:
         return False
 
     def _has_valid_cookie_session(self) -> bool:
-        cookies = _load_cookies(self.cookies_file)
-        if not cookies:
-            return False
-
-        check_url = self._session_check_url()
-        try:
-            response = requests.get(
-                check_url,
-                cookies=_requests_cookie_jar(cookies),
-                allow_redirects=True,
-                timeout=int(self.config.browser.get("session_check_timeout_seconds", 15)),
-            )
-        except requests.RequestException as exc:
-            LOGGER.info("Requests cookie validation failed: %s", exc)
-            return True
-
-        if response.status_code >= 500:
-            LOGGER.info("Session check returned %s; falling back to Selenium validation.", response.status_code)
-            return True
-
-        if _looks_like_login_page(response.url, response.text, self.config):
-            return False
-
-        return response.ok
+        return validate_cookie_session(self.config, self.cookies_file)
 
     def _wait_until_logged_in(self, timeout: int) -> None:
         indicator = self.config.selectors["login"].get("logged_in_indicator")
@@ -316,12 +293,7 @@ class PortalBrowser:
             return False
 
     def _session_check_url(self) -> str:
-        enabled_sections = self.config.monitoring.get("enabled_sections", ["attendance", "marks", "memo"])
-        for section in enabled_sections:
-            url = self.config.portal.get(f"{section}_url")
-            if url:
-                return url
-        return self.config.portal["base_url"]
+        return _session_check_url(self.config)
 
 
 def _dedupe_cookies(cookies: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -364,6 +336,42 @@ def _requests_cookie_jar(cookies: list[dict[str, Any]]) -> requests.cookies.Requ
             path=cookie.get("path", "/"),
         )
     return jar
+
+
+def validate_cookie_session(config: AppConfig, cookies_file: Path | None = None) -> bool | None:
+    cookies = _load_cookies(cookies_file or config.resolve_path("cookies_file"))
+    if not cookies:
+        return False
+
+    check_url = _session_check_url(config)
+    try:
+        response = requests.get(
+            check_url,
+            cookies=_requests_cookie_jar(cookies),
+            allow_redirects=True,
+            timeout=int(config.browser.get("session_check_timeout_seconds", 15)),
+        )
+    except requests.RequestException as exc:
+        LOGGER.info("Requests cookie validation failed: %s", exc)
+        return None
+
+    if response.status_code >= 500:
+        LOGGER.info("Session check returned %s; falling back to Selenium validation.", response.status_code)
+        return None
+
+    if _looks_like_login_page(response.url, response.text, config):
+        return False
+
+    return response.ok
+
+
+def _session_check_url(config: AppConfig) -> str:
+    enabled_sections = config.monitoring.get("enabled_sections", ["attendance", "marks", "memo"])
+    for section in enabled_sections:
+        url = config.portal.get(f"{section}_url")
+        if url:
+            return url
+    return config.portal["base_url"]
 
 
 def _looks_like_login_page(url: str, html: str, config: AppConfig) -> bool:

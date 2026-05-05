@@ -43,6 +43,9 @@
   "attendance_options": {
     "last_week_rows": 3
   },
+  "requests_extraction": {
+    "enabled": true
+  },
   "link_keywords": {
     "attendance": ["attendance"],
     "marks": ["marks", "cie", "ete", "internal", "result"],

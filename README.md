@@ -153,6 +153,14 @@ Then message your Telegram bot:
 
 `/check` and `/analyze` log into SRAAP with Selenium. `/attendance`, `/marks`, `/memo`, `/total`, and `/all` are cache-only commands: they reply from the latest saved portal state and never start Selenium. If no saved state exists yet, run `/analyze` first.
 
+For faster live checks, the bot first tries to fetch portal pages with `requests` using saved cookies. If that session is expired, unauthenticated, or the HTML cannot be parsed confidently, it falls back to Selenium and the Telegram CAPTCHA flow. You can disable this optimization with:
+
+```json
+"requests_extraction": {
+  "enabled": false
+}
+```
+
 Background monitoring is off by default. To enable it, set `ENABLE_BACKGROUND_MONITOR=true` or add `"background_enabled": true` inside the `monitoring` section of `config.json`.
 
 ## Render Web Service Deployment
