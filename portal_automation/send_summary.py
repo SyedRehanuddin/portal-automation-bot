@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import html
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import pytz
 
 from .config import load_config
 from .notifier import TelegramNotifier
@@ -38,12 +41,16 @@ def main() -> int:
 
 def build_summary(state: dict[str, Any], section: str = "all") -> str:
     parts = [f"<b>SRAAP {summary_title(section)}</b>"]
+    last_updated = _format_last_updated(state)
+    if last_updated:
+        parts.append(last_updated)
 
     attendance = state.get("attendance") or {}
     if attendance and section == "total":
         return (
             f"<b>SRAAP total attendance</b>\n"
-            f"{html.escape(str(attendance.get('overall_percent', '-')))}%"
+            f"{html.escape(str(attendance.get('overall_percent', '-')))}%\n"
+            f"{last_updated}"
         )
 
     if attendance and section in {"all", "attendance"}:
@@ -89,6 +96,21 @@ def summary_title(section: str) -> str:
         "memo": "semester memo status",
     }
     return titles.get(section, "latest saved check")
+
+
+def _format_last_updated(state: dict[str, Any]) -> str:
+    value = state.get("last_updated_at") or state.get("last_checked_at")
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(str(value))
+        if parsed.tzinfo is None:
+            parsed = pytz.timezone("Asia/Kolkata").localize(parsed)
+        parsed = parsed.astimezone(pytz.timezone("Asia/Kolkata"))
+        formatted = parsed.strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        formatted = str(value)
+    return f"<b>Last updated</b>: {html.escape(formatted)}"
 
 
 def _format_last_week(rows: list[Any]) -> str:

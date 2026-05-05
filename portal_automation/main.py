@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from selenium.common.exceptions import WebDriverException
+import pytz
 
 from .browser import PortalBrowser
 from .config import ConfigError, load_config
@@ -74,6 +75,7 @@ def run_check(extractor: PortalExtractor, notifier: TelegramNotifier, state_file
 
     new_state = {
         "last_checked_at": datetime.now().isoformat(timespec="seconds"),
+        "last_updated_at": datetime.now(pytz.timezone("Asia/Kolkata")).isoformat(timespec="seconds"),
         **new_data,
     }
 

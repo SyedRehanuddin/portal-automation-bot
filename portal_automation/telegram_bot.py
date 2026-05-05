@@ -4,10 +4,12 @@ import argparse
 import asyncio
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
+import pytz
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -32,6 +34,7 @@ from .timetable import (
 
 LOGGER = logging.getLogger(__name__)
 MAX_TELEGRAM_MESSAGE = 3500
+IST = pytz.timezone("Asia/Kolkata")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -248,6 +251,7 @@ def run_portal_check(
         new_data = extractor.collect_all()
 
     new_state = {
+        "last_updated_at": datetime.now(IST).isoformat(timespec="seconds"),
         **new_data,
     }
 
@@ -349,14 +353,32 @@ async def _get_timetable_locked(
 def build_assistant_response(state: dict[str, Any], section: str) -> str:
     if section == "total":
         attendance = state.get("attendance") or {}
-        return f"Attendance: {_escape_text(str(attendance.get('overall_percent', '-')))}%"
+        return (
+            f"Attendance: {_escape_text(str(attendance.get('overall_percent', '-')))}%\n"
+            f"{_format_last_updated(state)}"
+        )
 
     if section == "memo":
         memo = state.get("memo") or {}
         status = memo.get("status") or ("Released" if memo.get("available") else "Not released yet")
-        return f"Memo: {_escape_text(str(status))}"
+        return f"Memo: {_escape_text(str(status))}\n{_format_last_updated(state)}"
 
     return build_summary(state, section)
+
+
+def _format_last_updated(state: dict[str, Any]) -> str:
+    value = state.get("last_updated_at") or state.get("last_checked_at")
+    if not value:
+        return "Last updated: -"
+    try:
+        parsed = datetime.fromisoformat(str(value))
+        if parsed.tzinfo is None:
+            parsed = IST.localize(parsed)
+        parsed = parsed.astimezone(IST)
+        formatted = parsed.strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        formatted = str(value)
+    return f"Last updated: {_escape_text(formatted)}"
 
 
 def _build_captcha_handler(context: ContextTypes.DEFAULT_TYPE, config: AppConfig) -> Any:

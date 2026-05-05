@@ -31,3 +31,11 @@ services:
         generateValue: true
       - key: PORTAL_COOKIES_JSON
         sync: false
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_TABLE
+        value: bot_state

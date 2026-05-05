@@ -197,6 +197,34 @@ If `TELEGRAM_WEBHOOK_URL` is not set, the app uses Render's `RENDER_EXTERNAL_URL
 
 Important CAPTCHA note: Render runs Chrome headless, so it cannot show the manual CAPTCHA browser. Run the bot locally once, complete CAPTCHA, then use the saved `data/cookies.json` content as `PORTAL_COOKIES_JSON` in Render if your portal session requires cookies. If cookies expire, refresh them locally and update the Render environment variable.
 
+## Persistent Storage
+
+Render's free filesystem can disappear after restarts or deploys. For production use, set these environment variables to store cookies, portal state, and timetable cache in Supabase instead of local JSON files:
+
+```env
+STORAGE_BACKEND=supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_TABLE=bot_state
+```
+
+Create this Supabase table:
+
+```sql
+create table if not exists bot_state (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+```
+
+Every successful portal scan writes `last_updated_at`. Cache-only commands show it so you know how fresh the reply is:
+
+```text
+Attendance: 78%
+Last updated: 11:30 AM
+```
+
 ## Optional: Task Scheduler
 
 1. Open Windows Task Scheduler.
