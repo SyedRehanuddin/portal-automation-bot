@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import asyncio
 from datetime import datetime, timedelta
 
 import pytz
@@ -10,12 +11,17 @@ from apscheduler.triggers.cron import CronTrigger
 from telegram.ext import Application
 
 from .config import AppConfig
-from .timetable import format_today, get_cached_timetable, get_current_class, get_next_class
+from .send_summary import build_summary
+from .storage import read_json
+from .timetable import format_today, get_cached_timetable, get_current_class, get_next_class, get_timetable
 
 
 LOGGER = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
-CLASS_UPDATE_TIMES = ["08:55", "10:05", "11:05", "12:05", "13:05", "14:05", "15:05", "16:05"]
+TIMETABLE_REFRESH_TIME = "08:50"
+FIRST_CLASS_REMINDER_TIME = "08:55"
+CLASS_CONTEXT_TIMES = ["09:55", "10:55", "11:55", "12:55", "13:55", "14:55", "15:55"]
+ATTENDANCE_UPDATE_TIMES = ["10:05", "11:05", "12:05", "13:05", "14:05", "15:05", "16:05", "17:05"]
 
 
 def start_scheduler(application: Application, config: AppConfig) -> AsyncIOScheduler | None:
@@ -24,17 +30,29 @@ def start_scheduler(application: Application, config: AppConfig) -> AsyncIOSched
         return None
 
     scheduler = AsyncIOScheduler(timezone=IST)
+    refresh_hour, refresh_minute = _parse_time(TIMETABLE_REFRESH_TIME)
     scheduler.add_job(
-        send_daily_schedule,
-        CronTrigger(hour=8, minute=50, timezone=IST),
+        refresh_and_send_daily_schedule,
+        CronTrigger(hour=refresh_hour, minute=refresh_minute, timezone=IST),
         args=[application, config],
-        id="daily_today_schedule",
+        id="daily_timetable_refresh",
         replace_existing=True,
         coalesce=True,
         max_instances=1,
     )
 
-    for time_text in CLASS_UPDATE_TIMES:
+    first_hour, first_minute = _parse_time(FIRST_CLASS_REMINDER_TIME)
+    scheduler.add_job(
+        send_class_update,
+        CronTrigger(hour=first_hour, minute=first_minute, timezone=IST),
+        args=[application, config, FIRST_CLASS_REMINDER_TIME],
+        id="first_class_reminder",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+    for time_text in CLASS_CONTEXT_TIMES:
         hour, minute = _parse_time(time_text)
         scheduler.add_job(
             send_class_update,
@@ -46,8 +64,26 @@ def start_scheduler(application: Application, config: AppConfig) -> AsyncIOSched
             max_instances=1,
         )
 
+    for time_text in ATTENDANCE_UPDATE_TIMES:
+        hour, minute = _parse_time(time_text)
+        scheduler.add_job(
+            send_total_attendance_update,
+            CronTrigger(hour=hour, minute=minute, timezone=IST),
+            args=[application, config, time_text],
+            id=f"attendance_update_{time_text.replace(':', '')}",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+
     scheduler.start()
-    LOGGER.info("Started timetable scheduler with %d class reminder jobs.", len(CLASS_UPDATE_TIMES))
+    LOGGER.info(
+        "Started scheduler: timetable_refresh=%s first_class=%s class_context=%s attendance=%s",
+        TIMETABLE_REFRESH_TIME,
+        FIRST_CLASS_REMINDER_TIME,
+        CLASS_CONTEXT_TIMES,
+        ATTENDANCE_UPDATE_TIMES,
+    )
     return scheduler
 
 
@@ -57,25 +93,57 @@ async def shutdown_scheduler(scheduler: AsyncIOScheduler | None) -> None:
         LOGGER.info("Stopped timetable scheduler.")
 
 
-async def send_daily_schedule(application: Application, config: AppConfig) -> None:
+async def refresh_and_send_daily_schedule(application: Application, config: AppConfig) -> None:
     now = datetime.now(IST)
-    timetable = get_cached_timetable(config)
     LOGGER.info(
-        "Daily schedule trigger=%s weekday=%s cached_days=%s source=cache",
+        "Daily timetable refresh trigger=%s weekday=%s source=live",
         now.isoformat(timespec="seconds"),
         now.strftime("%A"),
-        sorted(timetable),
     )
+
+    try:
+        timetable = await asyncio.to_thread(get_timetable, config, True)
+    except Exception:
+        LOGGER.exception("Daily timetable refresh failed.")
+        await application.bot.send_message(
+            chat_id=config.credentials.telegram_chat_id,
+            text="Timetable refresh failed at 08:50. Try /schedule once.",
+        )
+        return
+
     if not _has_day_cache(timetable, now):
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
-            text=_missing_cache_message(now),
+            text=f"Updated timetable found no classes for {now.strftime('%A')}.",
         )
         return
 
     await application.bot.send_message(
         chat_id=config.credentials.telegram_chat_id,
         text=format_today(timetable, now),
+    )
+
+
+async def send_total_attendance_update(application: Application, config: AppConfig, trigger_time: str | None = None) -> None:
+    now = datetime.now(IST)
+    state = read_json(config.resolve_path("data_file"), {})
+    LOGGER.info(
+        "Attendance reminder trigger=%s now=%s source=cache has_state=%s",
+        trigger_time or now.strftime("%H:%M"),
+        now.isoformat(timespec="seconds"),
+        bool(state),
+    )
+    if not state:
+        await application.bot.send_message(
+            chat_id=config.credentials.telegram_chat_id,
+            text="No saved attendance data yet. Run /analyze once.",
+        )
+        return
+
+    await application.bot.send_message(
+        chat_id=config.credentials.telegram_chat_id,
+        text=build_summary(state, "total"),
+        parse_mode="HTML",
     )
 
 
