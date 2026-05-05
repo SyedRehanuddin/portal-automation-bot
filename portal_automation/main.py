@@ -7,7 +7,6 @@ import signal
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from selenium.common.exceptions import WebDriverException
@@ -26,7 +25,7 @@ STOP_REQUESTED = False
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Monitor university portal attendance, marks, and memo updates.")
+    parser = argparse.ArgumentParser(description="Monitor university portal attendance and marks updates.")
     parser.add_argument("--config", default="config.json", help="Path to config.json")
     parser.add_argument("--once", action="store_true", help="Run one check and exit")
     parser.add_argument("--notify-first-run", action="store_true", help="Send Telegram summary even when no previous state exists")
@@ -87,17 +86,11 @@ def run_check(extractor: PortalExtractor, notifier: TelegramNotifier, state_file
         return
 
     messages = build_change_messages(old_state, new_state)
-    if _memo_target_changed(old_state, new_state):
-        write_json(state_file, new_state)
-        LOGGER.info("Memo target changed; saved new baseline without notification.")
-        return
-
     write_json(state_file, new_state)
 
     if messages:
         LOGGER.info("Detected %d change(s). Sending Telegram notifications.", len(messages))
         notifier.send_many(messages)
-        _send_memo_pdf_if_available(notifier, new_state)
     else:
         LOGGER.info("No changes detected.")
 
@@ -111,24 +104,9 @@ def sleep_with_jitter(interval_seconds: int) -> None:
         time.sleep(min(5, end_at - time.time()))
 
 
-def _memo_target_changed(old_state: dict[str, Any], new_state: dict[str, Any]) -> bool:
-    old_memo = old_state.get("memo") or {}
-    new_memo = new_state.get("memo") or {}
-    return bool(new_memo.get("target")) and old_memo.get("target") != new_memo.get("target")
-
-
 def _short_error(exc: BaseException) -> str:
     text = str(exc).splitlines()[0].strip()
     return text or exc.__class__.__name__
-
-
-def _send_memo_pdf_if_available(notifier: TelegramNotifier, state: dict[str, Any]) -> None:
-    memo = state.get("memo") or {}
-    downloaded_file = memo.get("downloaded_file")
-    if not downloaded_file:
-        return
-    caption = "<b>New semester memo PDF</b>"
-    notifier.send_document(Path(downloaded_file), caption=caption)
 
 
 def request_stop(signum: int, frame: Any) -> None:

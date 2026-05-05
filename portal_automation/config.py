@@ -69,8 +69,8 @@ def load_config(config_path: str | Path) -> AppConfig:
         raw = json.load(file)
 
     _require_sections(raw, ["portal", "selectors", "browser", "monitoring"])
-    _require_sections(raw["portal"], ["base_url", "login_url", "attendance_url", "marks_url", "memo_url"])
-    _require_sections(raw["selectors"], ["login", "attendance", "marks", "memo"])
+    _require_sections(raw["portal"], ["base_url", "login_url", "attendance_url", "marks_url"])
+    _require_sections(raw["selectors"], ["login", "attendance", "marks"])
 
     credentials = Credentials(
         enrollment_number=_required_env("ENROLLMENT_NUMBER"),

@@ -65,10 +65,6 @@ async def marks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply_summary(update, context, "marks")
 
 
-async def memo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _reply_summary(update, context, "memo")
-
-
 async def total(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply_summary(update, context, "total")
 
@@ -175,7 +171,7 @@ async def natural_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     section = _section_from_text(text)
     if section is None:
-        await _reply(update, "Tell me what you need: attendance, marks, memo, or everything.")
+        await _reply(update, "Tell me what you need: attendance, marks, or everything.")
         return
 
     await _reply_summary(update, context, section)
@@ -188,15 +184,13 @@ async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await _reply(update, "Checking for changes...")
     try:
-        messages, memo_pdf = await _run_check_locked(context, config, compare=True)
+        messages, _ = await _run_check_locked(context, config, compare=True)
     except Exception as exc:
         LOGGER.exception("Manual check failed: %s", exc)
         await _reply(update, f"Portal check failed: {_escape_text(_short_error(exc))}")
         return
     if messages:
         await _send_messages(context, config.credentials.telegram_chat_id, messages)
-        if memo_pdf:
-            await _send_document(context, config.credentials.telegram_chat_id, memo_pdf, "New semester memo PDF")
         return
 
     await _reply(update, "No changes found.")
@@ -238,8 +232,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await _reply_summary(update, context, "total")
     elif action == "marks":
         await _reply_summary(update, context, "marks")
-    elif action == "memo":
-        await _reply_summary(update, context, "memo")
     elif action == "all":
         await _reply_summary(update, context, "all")
     elif action == "today":
@@ -263,7 +255,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def monitor_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
     try:
-        messages, memo_pdf = await _run_check_locked(context, config, compare=True)
+        messages, _ = await _run_check_locked(context, config, compare=True)
     except Exception as exc:
         LOGGER.exception("Scheduled monitor failed: %s", exc)
         await _send_messages(
@@ -275,8 +267,6 @@ async def monitor_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if messages:
         await _send_messages(context, config.credentials.telegram_chat_id, messages)
-        if memo_pdf:
-            await _send_document(context, config.credentials.telegram_chat_id, memo_pdf, "New semester memo PDF")
 
 
 def run_portal_check(
@@ -302,13 +292,9 @@ def run_portal_check(
         write_json(state_file, new_state)
         return [], None
 
-    if _memo_target_changed(old_state, new_state):
-        write_json(state_file, new_state)
-        return [], None
-
     messages = build_change_messages(old_state, new_state)
     write_json(state_file, new_state)
-    return messages, _memo_pdf_path(new_state) if messages else None
+    return messages, None
 
 
 def _collect_portal_data(config: AppConfig, captcha_handler: Any = None) -> dict[str, Any]:
@@ -411,11 +397,6 @@ def build_assistant_response(state: dict[str, Any], section: str) -> str:
             f"Attendance: {_escape_text(str(attendance.get('overall_percent', '-')))}%\n"
             f"{_format_last_updated(state)}"
         )
-
-    if section == "memo":
-        memo = state.get("memo") or {}
-        status = memo.get("status") or ("Released" if memo.get("available") else "Not released yet")
-        return f"Memo: {_escape_text(str(status))}\n{_format_last_updated(state)}"
 
     return build_summary(state, section)
 
@@ -531,7 +512,7 @@ def _authorized(update: Update, config: AppConfig) -> bool:
 
 def _help_message() -> str:
     return "<b>SRAAP bot commands</b>\n" + _menu_message() + "\n/help - show this menu\n\n" + (
-        "You can also type: start, analyze, check, attendance, marks, memo, all, everything."
+        "You can also type: start, analyze, check, attendance, marks, all, everything."
     )
 
 
@@ -553,7 +534,7 @@ def _dashboard_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton("Marks", callback_data="ui:marks"),
-                InlineKeyboardButton("Memo", callback_data="ui:memo"),
+                InlineKeyboardButton("All Data", callback_data="ui:all"),
             ],
             [
                 InlineKeyboardButton("Today", callback_data="ui:today"),
@@ -562,7 +543,7 @@ def _dashboard_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton("Full Week", callback_data="ui:week"),
-                InlineKeyboardButton("All Data", callback_data="ui:all"),
+                InlineKeyboardButton("Menu", callback_data="ui:menu"),
             ],
             [
                 InlineKeyboardButton("Analyze", callback_data="ui:analyze"),
@@ -584,7 +565,7 @@ def _portal_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton("Marks", callback_data="ui:marks"),
-                InlineKeyboardButton("Memo", callback_data="ui:memo"),
+                InlineKeyboardButton("All Data", callback_data="ui:all"),
             ],
             [
                 InlineKeyboardButton("Analyze", callback_data="ui:analyze"),
@@ -619,7 +600,6 @@ def _menu_message() -> str:
         "/check - silently check and alert only if data changed\n"
         "/attendance - attendance summary\n"
         "/marks - CIE / ETE marks\n"
-        "/memo - semester memo status\n"
         "/total - total attendance only\n"
         "/all - all saved data\n"
         "/schedule - refresh timetable from website\n"
@@ -638,8 +618,6 @@ def _section_from_text(text: str) -> str | None:
         return "attendance"
     if "marks" in text or "cie" in text or "ete" in text:
         return "marks"
-    if "memo" in text or "result" in text:
-        return "memo"
     return None
 
 
@@ -663,18 +641,6 @@ def _config(context: ContextTypes.DEFAULT_TYPE) -> AppConfig:
     if not isinstance(config, AppConfig):
         raise RuntimeError("Bot config was not initialized.")
     return config
-
-
-def _memo_pdf_path(state: dict[str, Any]) -> Path | None:
-    memo = state.get("memo") or {}
-    downloaded_file = memo.get("downloaded_file")
-    return Path(downloaded_file) if downloaded_file else None
-
-
-def _memo_target_changed(old_state: dict[str, Any], new_state: dict[str, Any]) -> bool:
-    old_memo = old_state.get("memo") or {}
-    new_memo = new_state.get("memo") or {}
-    return bool(new_memo.get("target")) and old_memo.get("target") != new_memo.get("target")
 
 
 def _chunks(text: str) -> list[str]:
@@ -703,7 +669,6 @@ def build_application(config: AppConfig) -> Application:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("attendance", attendance))
     application.add_handler(CommandHandler("marks", marks))
-    application.add_handler(CommandHandler("memo", memo))
     application.add_handler(CommandHandler("total", total))
     application.add_handler(CommandHandler("all", all_data))
     application.add_handler(CommandHandler("captcha", captcha))
@@ -737,7 +702,6 @@ async def setup_bot_commands(application: Application) -> None:
                 BotCommand("attendance", "Attendance summary"),
                 BotCommand("total", "Total attendance"),
                 BotCommand("marks", "CIE / ETE marks"),
-                BotCommand("memo", "Semester memo status"),
                 BotCommand("all", "All saved data"),
                 BotCommand("schedule", "Refresh timetable"),
                 BotCommand("today", "Today's schedule"),

@@ -23,7 +23,6 @@ COMMANDS = {
     "/attendance": "attendance",
     "/courses": "courses",
     "/marks": "marks",
-    "/memo": "memo",
     "/all": "all",
 }
 
@@ -102,7 +101,6 @@ def _help_message(prefix: str = "") -> str:
         + "/attendance - full attendance summary\n"
         + "/courses - course-wise attendance\n"
         + "/marks - CIE / ETE marks\n"
-        + "/memo - semester memo status\n"
         + "/all - everything saved\n"
         + "/help - show this list"
     )

@@ -13,19 +13,7 @@ def build_change_messages(old: dict[str, Any], new: dict[str, Any]) -> list[str]
     if old.get("marks") != new.get("marks"):
         messages.append(_format_section_change("Marks updated", old.get("marks"), new.get("marks")))
 
-    old_memo = old.get("memo") or {}
-    new_memo = new.get("memo") or {}
-    if old_memo != new_memo:
-        title = "New memo released" if _memo_became_available(old_memo, new_memo) else "Memo availability changed"
-        messages.append(_format_section_change(title, old_memo, new_memo))
-
     return messages
-
-
-def _memo_became_available(old_memo: dict[str, Any], new_memo: dict[str, Any]) -> bool:
-    old_available = bool(old_memo.get("available") or old_memo.get("pdf_links"))
-    new_available = bool(new_memo.get("available") or new_memo.get("pdf_links"))
-    return not old_available and new_available
 
 
 def _format_section_change(title: str, old_value: Any, new_value: Any) -> str:

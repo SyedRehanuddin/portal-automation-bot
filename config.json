@@ -3,8 +3,7 @@
     "base_url": "https://sraap.in/",
     "login_url": "https://sraap.in/student_login.php",
     "attendance_url": "https://sraap.in/student/dash_board.php",
-    "marks_url": "https://sraap.in/student/student_mid1.php",
-    "memo_url": "https://sraap.in/student/student_sem_wise_memo.php"
+    "marks_url": "https://sraap.in/student/student_mid1.php"
   },
   "selectors": {
     "login": {
@@ -26,21 +25,7 @@
       "row": "tbody tr",
       "cell": "td",
       "header": "thead th"
-    },
-    "memo": {
-      "pdf_links": "a[href$='.pdf'], a[href*='.pdf']",
-      "print_memo": "a, button, input[type='button'], input[type='submit']",
-      "availability_text": "body",
-      "table": "table",
-      "row": "tbody tr",
-      "cell": "td"
     }
-  },
-  "memo_target": {
-    "year": "1",
-    "semester": "2",
-    "exam_session_keywords": ["april"],
-    "description": "I Year II Semester April memo"
   },
   "attendance_options": {
     "last_week_rows": 3
@@ -50,8 +35,7 @@
   },
   "link_keywords": {
     "attendance": ["attendance"],
-    "marks": ["marks", "cie", "ete", "internal", "result"],
-    "memo": ["memo", "marksheet", "grade", "transcript", "result"]
+    "marks": ["marks", "cie", "ete", "internal", "result"]
   },
   "browser": {
     "headless_after_login": false,
@@ -73,7 +57,7 @@
   "monitoring": {
     "background_enabled": false,
     "check_interval_minutes": 12,
-    "enabled_sections": ["attendance", "marks", "memo"],
+    "enabled_sections": ["attendance", "marks"],
     "data_file": "data/portal_state.json",
     "cookies_file": "data/cookies.json",
     "downloads_dir": "downloads"

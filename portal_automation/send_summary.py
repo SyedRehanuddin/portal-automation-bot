@@ -19,7 +19,7 @@ def main() -> int:
     parser.add_argument(
         "--section",
         default="all",
-        choices=["all", "attendance", "last-week", "courses", "marks", "memo"],
+        choices=["all", "attendance", "last-week", "courses", "marks"],
         help="Which saved data to send.",
     )
     args = parser.parse_args()
@@ -69,16 +69,6 @@ def build_summary(state: dict[str, Any], section: str = "all") -> str:
     if marks and section in {"all", "marks"}:
         parts.append(_format_marks(marks))
 
-    memo = state.get("memo") or {}
-    if memo and section in {"all", "memo"}:
-        target = memo.get("target") or {}
-        status = memo.get("status") or ("Available" if memo.get("available") else "Not available")
-        parts.append(
-            "<b>Semester Memo</b>\n"
-            f"Target: {html.escape(str(target.get('description', 'Sem 2 April memo')))}\n"
-            f"Status: {html.escape(str(status))}"
-        )
-
     body = "\n\n".join(part for part in parts if part)
     if body.strip() == parts[0]:
         return f"{parts[0]}\nNo saved data found for this section."
@@ -93,7 +83,6 @@ def summary_title(section: str) -> str:
         "last-week": "last 3 attendance days",
         "courses": "course attendance",
         "marks": "CIE / ETE marks",
-        "memo": "semester memo status",
     }
     return titles.get(section, "latest saved check")
 

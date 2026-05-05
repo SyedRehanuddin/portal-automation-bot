@@ -379,7 +379,7 @@ def validate_cookie_session(config: AppConfig, cookies_file: Path | None = None)
 
 
 def _session_check_url(config: AppConfig) -> str:
-    enabled_sections = config.monitoring.get("enabled_sections", ["attendance", "marks", "memo"])
+    enabled_sections = config.monitoring.get("enabled_sections", ["attendance", "marks"])
     for section in enabled_sections:
         url = config.portal.get(f"{section}_url")
         if url:

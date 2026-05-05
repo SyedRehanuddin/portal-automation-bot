@@ -1,6 +1,6 @@
 # University Portal Automation
 
-This project logs into a university portal with Selenium, lets you solve CAPTCHA manually when needed, saves cookies, reuses the session, checks attendance/marks/memo pages every 10-15 minutes, and sends Telegram alerts only when something changes.
+This project logs into a university portal with Selenium, lets you solve CAPTCHA manually when needed, saves cookies, reuses the session, checks attendance and marks pages, and sends Telegram alerts only when something changes.
 
 Because every university portal uses different URLs and HTML selectors, you must fill in `config.json` with your portal's real URLs and CSS selectors before running.
 
@@ -8,7 +8,7 @@ Because every university portal uses different URLs and HTML selectors, you must
 
 - `portal_automation/main.py` - starts the monitor
 - `portal_automation/browser.py` - Selenium login, cookies, session refresh
-- `portal_automation/extractors.py` - attendance, marks, memo extraction
+- `portal_automation/extractors.py` - attendance and marks extraction
 - `portal_automation/notifier.py` - Telegram notifications using `requests`
 - `portal_automation/storage.py` - local JSON state
 - `config.example.json` - copy to `config.json` and edit
@@ -62,9 +62,8 @@ Because every university portal uses different URLs and HTML selectors, you must
 
    - `attendance_url`
    - `marks_url`
-   - `memo_url`
 
-   If those URLs are wrong, the script will also scan the logged-in menu for matching `link_keywords` such as `attendance`, `cie`, `ete`, `marks`, `memo`, and `result`.
+   If those URLs are wrong, the script will also scan the logged-in menu for matching `link_keywords` such as `attendance`, `cie`, `ete`, `marks`, and `result`.
 
    The login selectors are already set for `https://sraap.in/student_login.php`:
 
@@ -100,8 +99,6 @@ The script then checks:
 
 - Attendance
 - Marks
-- Semester memo page or PDF link availability
-
 Previous data is stored in `data/portal_state.json`. Telegram alerts are sent only when the new data differs from the previous data.
 
 ## Run With Windows Batch File
@@ -143,7 +140,6 @@ Then message your Telegram bot:
 ```text
 /attendance
 /marks
-/memo
 /total
 /last3
 /all
@@ -151,7 +147,7 @@ Then message your Telegram bot:
 /help
 ```
 
-`/check` and `/analyze` log into SRAAP with Selenium. `/attendance`, `/marks`, `/memo`, `/total`, and `/all` are cache-only commands: they reply from the latest saved portal state and never start Selenium. If no saved state exists yet, run `/analyze` first.
+`/check` and `/analyze` log into SRAAP with Selenium. `/attendance`, `/marks`, `/total`, and `/all` are cache-only commands: they reply from the latest saved portal state and never start Selenium. If no saved state exists yet, run `/analyze` first.
 
 For faster live checks, the bot first tries to fetch portal pages with `requests` using saved cookies. If that session is expired, unauthenticated, or the HTML cannot be parsed confidently, it falls back to Selenium and the Telegram CAPTCHA flow. You can disable this optimization with:
 

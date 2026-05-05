@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-import hashlib
-import logging
 import re
 from typing import Any
-from urllib.parse import urljoin
 
 import requests
 
 from .browser import _load_cookies, _looks_like_login_page, _requests_cookie_jar
 from .config import AppConfig
-
-
-LOGGER = logging.getLogger(__name__)
 
 
 class RequestsPortalExtractor:
@@ -24,16 +18,13 @@ class RequestsPortalExtractor:
             self.session.cookies.update(_requests_cookie_jar(cookies))
 
     def collect_all(self) -> dict[str, Any]:
-        enabled_sections = set(self.config.monitoring.get("enabled_sections", ["attendance", "marks", "memo"]))
+        enabled_sections = set(self.config.monitoring.get("enabled_sections", ["attendance", "marks"]))
         data: dict[str, Any] = {}
 
         if "attendance" in enabled_sections:
             data["attendance"] = self.extract_attendance()
         if "marks" in enabled_sections:
             data["marks"] = self.extract_table_page("marks")
-        if "memo" in enabled_sections:
-            data["memo"] = self.extract_memo()
-
         return data
 
     def extract_attendance(self) -> dict[str, Any]:
@@ -74,34 +65,6 @@ class RequestsPortalExtractor:
         if headers and all(len(row) == len(headers) for row in body):
             return [dict(zip(headers, row)) for row in body]
         return body
-
-    def extract_memo(self) -> dict[str, Any]:
-        url = self.config.portal["memo_url"]
-        html = self._get_authenticated_html(url)
-        rows = _extract_tables(html)
-        target = self.config.raw.get("memo_target", {})
-        target_row = _find_target_memo_row(rows, target)
-        links = _extract_pdf_links(html, url)
-        page_text = _html_text(html)
-
-        if target and target_row is None:
-            return {
-                "target": target,
-                "available": False,
-                "status": "Target memo row not available yet",
-                "matching_row": None,
-                "rows_seen": [row for table in rows for row in table[:10]][:10],
-            }
-
-        return {
-            "target": target,
-            "available": bool(links) or _looks_available(page_text) or target_row is not None,
-            "matching_row": target_row,
-            "downloaded_file": None,
-            "pdf_links": links,
-            "page_fingerprint": _fingerprint(page_text),
-            "summary": page_text[:1000],
-        }
 
     def _get_authenticated_html(self, url: str) -> str:
         response = self.session.get(
@@ -144,58 +107,6 @@ def _html_text(html: str) -> str:
         .replace("&quot;", '"')
     )
     return re.sub(r"\s+", " ", text).strip()
-
-
-def _extract_pdf_links(html: str, base_url: str) -> list[dict[str, str]]:
-    links: list[dict[str, str]] = []
-    for match in re.finditer(r"<a\b[^>]*href=[\"']([^\"']*\.pdf[^\"']*)[\"'][^>]*>(.*?)</a>", html, flags=re.IGNORECASE | re.DOTALL):
-        href = match.group(1)
-        text = _html_text(match.group(2)) or "PDF"
-        links.append({"text": text, "url": urljoin(base_url, href)})
-    return links
-
-
-def _find_target_memo_row(tables: list[list[list[str]]], target: dict[str, Any]) -> list[str] | None:
-    if not target:
-        return None
-    for table in tables:
-        for row in table:
-            if _memo_row_matches_target(row, target):
-                return row
-    return None
-
-
-def _memo_row_matches_target(cells: list[str], target: dict[str, Any]) -> bool:
-    normalized_cells = [_normalize(cell) for cell in cells]
-    row_text = " ".join(normalized_cells)
-    year = str(target.get("year", "")).strip().lower()
-    semester = str(target.get("semester", "")).strip().lower()
-    keywords = [str(keyword).strip().lower() for keyword in target.get("exam_session_keywords", [])]
-    if year and year not in normalized_cells:
-        return False
-    if semester and semester not in normalized_cells:
-        return False
-    if keywords and not any(keyword in row_text for keyword in keywords):
-        return False
-    return True
-
-
-def _looks_available(text: str) -> bool:
-    lowered = text.lower()
-    unavailable_phrases = ["not available", "no memo", "not released", "coming soon", "no record found"]
-    available_phrases = ["memo", "marksheet", "semester result", "download", "pdf"]
-    if any(phrase in lowered for phrase in unavailable_phrases):
-        return False
-    return any(phrase in lowered for phrase in available_phrases)
-
-
-def _fingerprint(text: str) -> str:
-    normalized = " ".join(text.split())
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def _normalize(text: str) -> str:
-    return " ".join(text.lower().split())
 
 
 def _extract_overall_attendance_percent(text: str) -> str | None:
