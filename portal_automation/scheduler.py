@@ -60,7 +60,19 @@ async def shutdown_scheduler(scheduler: AsyncIOScheduler | None) -> None:
 async def send_daily_schedule(application: Application, config: AppConfig) -> None:
     now = datetime.now(IST)
     timetable = get_cached_timetable(config)
-    LOGGER.info("Daily schedule trigger=%s source=cache", now.isoformat(timespec="seconds"))
+    LOGGER.info(
+        "Daily schedule trigger=%s weekday=%s cached_days=%s source=cache",
+        now.isoformat(timespec="seconds"),
+        now.strftime("%A"),
+        sorted(timetable),
+    )
+    if not _has_day_cache(timetable, now):
+        await application.bot.send_message(
+            chat_id=config.credentials.telegram_chat_id,
+            text=_missing_cache_message(now),
+        )
+        return
+
     await application.bot.send_message(
         chat_id=config.credentials.telegram_chat_id,
         text=format_today(timetable, now),
@@ -70,6 +82,20 @@ async def send_daily_schedule(application: Application, config: AppConfig) -> No
 async def send_class_update(application: Application, config: AppConfig, trigger_time: str | None = None) -> None:
     now = datetime.now(IST)
     timetable = get_cached_timetable(config)
+    if not _has_day_cache(timetable, now):
+        LOGGER.warning(
+            "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=cache status=missing_day_cache",
+            trigger_time or now.strftime("%H:%M"),
+            now.isoformat(timespec="seconds"),
+            now.strftime("%A"),
+            sorted(timetable),
+        )
+        await application.bot.send_message(
+            chat_id=config.credentials.telegram_chat_id,
+            text=_missing_cache_message(now),
+        )
+        return
+
     current = get_current_class(timetable, now)
     next_class = get_next_class(timetable, now)
     current_slot = current[1] if current else None
@@ -134,6 +160,18 @@ def _slot_range_text(slot: str) -> str:
     start = datetime.strptime(slot, "%H:%M")
     end = start + timedelta(hours=1)
     return f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
+
+
+def _has_day_cache(timetable: dict[str, dict[str, dict[str, str]]], now: datetime) -> bool:
+    day = now.strftime("%A")
+    return bool(timetable.get(day))
+
+
+def _missing_cache_message(now: datetime) -> str:
+    return (
+        f"Timetable cache not available for {now.strftime('%A')}.\n"
+        "Run /schedule once to refresh timetable cache."
+    )
 
 
 def _parse_time(value: str) -> tuple[int, int]:
