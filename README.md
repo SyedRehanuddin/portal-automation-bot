@@ -203,7 +203,7 @@ ENABLE_BACKGROUND_MONITOR=false
 
 If `TELEGRAM_WEBHOOK_URL` is not set, the app uses Render's `RENDER_EXTERNAL_URL` and appends `/telegram/webhook`.
 
-Important CAPTCHA note: Render runs Chrome headless, so it cannot show the manual CAPTCHA browser. Run the bot locally once, complete CAPTCHA, then use the saved `data/cookies.json` content as `PORTAL_COOKIES_JSON` in Render if your portal session requires cookies. If cookies expire, refresh them locally and update the Render environment variable.
+Important CAPTCHA note: Render runs Chrome headless, so the bot sends the login screenshot to Telegram when cookies expire. Reply with `/captcha CODE`. If the portal rejects the code, the bot sends a fresh screenshot and retries up to `browser.captcha_max_attempts`.
 
 ## Persistent Storage
 

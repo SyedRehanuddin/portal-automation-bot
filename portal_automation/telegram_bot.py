@@ -103,8 +103,9 @@ async def captcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception:
             LOGGER.info("CAPTCHA answer was stored but could not be queued immediately.")
 
-    context.application.bot_data.pop("captcha_request", None)
-    await _reply(update, "CAPTCHA received. Continuing portal login...")
+    attempt = request.get("attempt")
+    max_attempts = request.get("max_attempts")
+    await _reply(update, f"CAPTCHA received for attempt {attempt}/{max_attempts}. Continuing portal login...")
 
 
 async def timetable(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -399,10 +400,15 @@ def _build_captcha_handler(context: ContextTypes.DEFAULT_TYPE, config: AppConfig
     loop = asyncio.get_running_loop()
     chat_id = config.credentials.telegram_chat_id
 
-    def handle_captcha(browser: PortalBrowser) -> str:
+    def handle_captcha(browser: PortalBrowser, attempt: int = 1, max_attempts: int = 1) -> str:
         screenshot_path = browser.save_login_screenshot(config.root_dir / "data" / "captcha_login.png")
         queue: Queue[str] = Queue(maxsize=1)
-        request: dict[str, Any] = {"queue": queue, "answer": None}
+        request: dict[str, Any] = {
+            "queue": queue,
+            "answer": None,
+            "attempt": attempt,
+            "max_attempts": max_attempts,
+        }
 
         async def publish_request() -> None:
             context.application.bot_data["captcha_request"] = request
@@ -410,7 +416,10 @@ def _build_captcha_handler(context: ContextTypes.DEFAULT_TYPE, config: AppConfig
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=image,
-                    caption="Portal login CAPTCHA required. Reply with /captcha CODE within 5 minutes.",
+                    caption=(
+                        f"Portal login CAPTCHA required ({attempt}/{max_attempts}). "
+                        "Reply with /captcha CODE within 5 minutes."
+                    ),
                 )
 
         asyncio.run_coroutine_threadsafe(publish_request(), loop).result(timeout=30)
@@ -421,9 +430,12 @@ def _build_captcha_handler(context: ContextTypes.DEFAULT_TYPE, config: AppConfig
             while loop.time() < end_at:
                 answer = request.get("answer")
                 if isinstance(answer, str) and answer.strip():
+                    asyncio.run_coroutine_threadsafe(_clear_captcha_request(context), loop).result(timeout=10)
                     return answer
                 try:
-                    return queue.get(timeout=1)
+                    answer = queue.get(timeout=1)
+                    asyncio.run_coroutine_threadsafe(_clear_captcha_request(context), loop).result(timeout=10)
+                    return answer
                 except Empty:
                     continue
         except Empty as exc:

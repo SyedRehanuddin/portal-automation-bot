@@ -165,28 +165,41 @@ class PortalBrowser:
 
         driver = self.driver_or_raise
         login = self.config.selectors["login"]
-        LOGGER.info("Opening login page for Telegram-assisted CAPTCHA login.")
-        driver.get(self.config.portal["login_url"])
-
-        self._type_if_present(login["enrollment_input"], self.config.credentials.enrollment_number)
-        self._type_if_present(login["password_input"], self.config.credentials.password)
-
         captcha_selector = login.get("captcha_input")
         if not captcha_selector:
             raise RuntimeError("CAPTCHA selector is not configured.")
 
-        captcha = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, captcha_selector)))
-        captcha.click()
-        captcha_code = self.captcha_handler(self).strip()
-        if not captcha_code:
-            raise RuntimeError("Empty CAPTCHA was provided.")
-        captcha.clear()
-        captcha.send_keys(captcha_code)
+        timeout = int(self.config.browser.get("manual_captcha_timeout_seconds", 300))
+        max_attempts = int(self.config.browser.get("captcha_max_attempts", 3))
+        last_error: BaseException | None = None
 
-        timeout = int(self.config.browser.get("manual_captcha_timeout_seconds", 180))
-        self._click_submit_when_ready(login.get("submit_button"), timeout)
-        self._wait_until_logged_in(timeout)
-        self.save_cookies()
+        for attempt in range(1, max_attempts + 1):
+            LOGGER.info("Opening login page for Telegram-assisted CAPTCHA login attempt %d.", attempt)
+            driver.get(self.config.portal["login_url"])
+            self._type_if_present(login["enrollment_input"], self.config.credentials.enrollment_number)
+            self._type_if_present(login["password_input"], self.config.credentials.password)
+
+            captcha = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, captcha_selector)))
+            captcha.click()
+            captcha_code = self.captcha_handler(self, attempt, max_attempts).strip()
+            if not captcha_code:
+                raise RuntimeError("Empty CAPTCHA was provided.")
+            captcha.clear()
+            captcha.send_keys(captcha_code)
+
+            self._click_submit_when_ready(login.get("submit_button"), timeout)
+            try:
+                self._wait_until_logged_in(timeout)
+                self.save_cookies()
+                return
+            except (RuntimeError, TimeoutError) as exc:
+                last_error = exc
+                LOGGER.warning("Telegram CAPTCHA login attempt %d failed: %s", attempt, exc)
+                if attempt < max_attempts:
+                    continue
+                break
+
+        raise RuntimeError(f"Telegram CAPTCHA login failed after {max_attempts} attempts: {last_error}")
 
     def save_login_screenshot(self, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
