@@ -151,7 +151,7 @@ Then message your Telegram bot:
 /help
 ```
 
-`/check` logs into SRAAP immediately with Selenium. Other commands reply from the latest saved JSON and do not log into the portal unless they need timetable data.
+`/check` and `/analyze` log into SRAAP with Selenium. `/attendance`, `/marks`, `/memo`, `/total`, and `/all` are cache-only commands: they reply from the latest saved portal state and never start Selenium. If no saved state exists yet, run `/analyze` first.
 
 Background monitoring is off by default. To enable it, set `ENABLE_BACKGROUND_MONITOR=true` or add `"background_enabled": true` inside the `monitoring` section of `config.json`.
 

@@ -294,17 +294,8 @@ async def _reply_summary(update: Update, context: ContextTypes.DEFAULT_TYPE, sec
 
     state = read_json(config.resolve_path("data_file"), {})
     if not state:
-        await _reply(update, "No saved data yet. Checking portal now...")
-        try:
-            await _run_check_locked(context, config, compare=False)
-        except Exception as exc:
-            LOGGER.exception("Auto check for missing data failed: %s", exc)
-            await _reply(update, f"Portal check failed: {_escape_text(_short_error(exc))}")
-            return
-        state = read_json(config.resolve_path("data_file"), {})
-        if not state:
-            await _reply(update, "I could not fetch portal data yet. Try /check again.")
-            return
+        await _reply(update, "No saved data yet. Run /analyze to fetch the latest portal data first.")
+        return
 
     await _reply(update, build_assistant_response(state, section))
 
