@@ -94,6 +94,10 @@ async def shutdown_scheduler(scheduler: AsyncIOScheduler | None) -> None:
 
 async def refresh_and_send_daily_schedule(application: Application, config: AppConfig) -> None:
     now = datetime.now(IST)
+    if _is_weekend(now):
+        LOGGER.info("Skipping daily timetable refresh on weekend: %s", now.strftime("%A"))
+        return
+
     LOGGER.info(
         "Daily timetable refresh trigger=%s weekday=%s source=live",
         now.isoformat(timespec="seconds"),
@@ -125,6 +129,14 @@ async def refresh_and_send_daily_schedule(application: Application, config: AppC
 
 async def send_total_attendance_update(application: Application, config: AppConfig, trigger_time: str | None = None) -> None:
     now = datetime.now(IST)
+    if _is_weekend(now):
+        LOGGER.info(
+            "Skipping attendance refresh trigger=%s on weekend: %s",
+            trigger_time or now.strftime("%H:%M"),
+            now.strftime("%A"),
+        )
+        return
+
     LOGGER.info(
         "Attendance refresh trigger=%s now=%s source=portal",
         trigger_time or now.strftime("%H:%M"),
@@ -165,6 +177,14 @@ async def send_total_attendance_update(application: Application, config: AppConf
 
 async def send_class_update(application: Application, config: AppConfig, trigger_time: str | None = None) -> None:
     now = datetime.now(IST)
+    if _is_weekend(now):
+        LOGGER.info(
+            "Skipping class reminder trigger=%s on weekend: %s",
+            trigger_time or now.strftime("%H:%M"),
+            now.strftime("%A"),
+        )
+        return
+
     timetable = get_cached_timetable(config)
     if not _has_day_cache(timetable, now):
         LOGGER.warning(
@@ -249,6 +269,10 @@ def _slot_range_text(slot: str) -> str:
 def _has_day_cache(timetable: dict[str, dict[str, dict[str, str]]], now: datetime) -> bool:
     day = now.strftime("%A")
     return bool(timetable.get(day))
+
+
+def _is_weekend(now: datetime) -> bool:
+    return now.strftime("%A") in {"Saturday", "Sunday"}
 
 
 def _missing_cache_message(now: datetime) -> str:
