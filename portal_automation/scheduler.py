@@ -15,7 +15,7 @@ from .timetable import format_today, get_cached_timetable, get_current_class, ge
 
 LOGGER = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
-CLASS_UPDATE_TIMES = ["08:55", "10:05", "11:05", "12:05", "13:05", "14:05", "15:05", "16:05", "17:05"]
+CLASS_UPDATE_TIMES = ["08:55", "10:05", "11:05", "12:05", "13:05", "14:05", "15:05", "16:05", "16:30", "17:05"]
 
 
 def start_scheduler(application: Application, config: AppConfig) -> AsyncIOScheduler | None:
