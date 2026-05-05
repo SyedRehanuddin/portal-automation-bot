@@ -17,6 +17,8 @@ services:
         value: "true"
       - key: TELEGRAM_DROP_PENDING_UPDATES
         value: "true"
+      - key: ENABLE_TIMETABLE_SCHEDULER
+        value: "true"
       - key: TELEGRAM_WEBHOOK_PATH
         value: /telegram/webhook
       - key: ENROLLMENT_NUMBER

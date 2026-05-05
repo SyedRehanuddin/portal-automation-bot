@@ -2,6 +2,7 @@ selenium>=4.20.0
 requests>=2.31.0
 python-dotenv>=1.0.1
 python-telegram-bot[job-queue]>=21.10
+APScheduler>=3.10.4,<3.12.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pytz>=2024.1

@@ -50,6 +50,12 @@ def get_timetable(config: AppConfig, force_refresh: bool = False) -> dict[str, d
     return data
 
 
+def get_cached_timetable(config: AppConfig) -> dict[str, dict[str, dict[str, str]]]:
+    cached = read_json(_cache_path(config), {})
+    data = cached.get("data") if isinstance(cached, dict) else None
+    return data if isinstance(data, dict) else {}
+
+
 def scrape_timetable(config: AppConfig) -> dict[str, dict[str, dict[str, str]]]:
     options = Options()
     options.add_argument("--headless=new")

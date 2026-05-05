@@ -233,6 +233,23 @@ Attendance: 78%
 Last updated: 11:30 AM
 ```
 
+## Timetable Background Scheduler
+
+The Render webhook service starts a cache-only APScheduler instance during FastAPI lifespan startup. It never calls Selenium, `/check`, `/analyze`, or the live timetable site.
+
+Jobs:
+
+```text
+08:50 IST - send today's cached schedule
+08:55, 10:05, 11:05, 12:05, 13:05, 14:05, 15:05, 16:05, 17:05 IST - send class reminder
+```
+
+The scheduler reads only the cached timetable storage (`data/timetable.json` or Supabase when enabled). Disable it with:
+
+```env
+ENABLE_TIMETABLE_SCHEDULER=false
+```
+
 ## Optional: Task Scheduler
 
 1. Open Windows Task Scheduler.

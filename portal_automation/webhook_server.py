@@ -11,6 +11,7 @@ from telegram import Update
 
 from .config import load_config
 from . import timetable
+from .scheduler import shutdown_scheduler, start_scheduler
 from .telegram_bot import build_application
 
 
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await telegram_app.initialize()
         await telegram_app.start()
+        timetable_scheduler = start_scheduler(telegram_app, config)
 
         if os.getenv("SKIP_SET_WEBHOOK", "").strip().lower() not in {"1", "true", "yes"}:
             url = _webhook_url(webhook_path)
@@ -74,6 +76,7 @@ def create_app() -> FastAPI:
             yield
         finally:
             LOGGER.info("Stopping Telegram webhook application.")
+            await shutdown_scheduler(timetable_scheduler)
             await telegram_app.stop()
             await telegram_app.shutdown()
 
