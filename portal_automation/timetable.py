@@ -424,7 +424,7 @@ def _coerce_ist(value: datetime | None = None) -> datetime:
 
 
 def _debug_disable_cache() -> bool:
-    value = os.getenv("TIMETABLE_DISABLE_CACHE", "true").strip().lower()
+    value = os.getenv("TIMETABLE_DISABLE_CACHE", "false").strip().lower()
     return value in {"1", "true", "yes", "on"}
 
 

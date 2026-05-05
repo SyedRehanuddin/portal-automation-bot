@@ -14,7 +14,7 @@ services:
       - key: TZ
         value: Asia/Kolkata
       - key: TIMETABLE_DISABLE_CACHE
-        value: "true"
+        value: "false"
       - key: TELEGRAM_DROP_PENDING_UPDATES
         value: "true"
       - key: ENABLE_TIMETABLE_SCHEDULER

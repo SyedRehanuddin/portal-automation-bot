@@ -29,6 +29,7 @@ from .timetable import (
     format_now,
     format_today,
     format_week,
+    get_cached_timetable,
     get_timetable,
 )
 
@@ -355,7 +356,10 @@ async def _reply_timetable(update: Update, context: ContextTypes.DEFAULT_TYPE, i
         return
 
     try:
-        timetable_data = await _get_timetable_locked(context, config, force_refresh=False)
+        timetable_data = get_cached_timetable(config)
+        if not timetable_data:
+            await _reply(update, "Timetable cache not available. Run /schedule once to refresh timetable.")
+            return
     except TimetableError:
         await _reply(update, "Timetable not available")
         return
