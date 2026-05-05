@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin
 
+import requests
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
@@ -74,8 +75,12 @@ class PortalBrowser:
     def ensure_logged_in(self) -> None:
         if self._has_active_session():
             return
-        if self._try_cookie_login():
+        if not self._has_valid_cookie_session():
+            LOGGER.info("Saved portal cookies are missing or expired according to requests validation.")
+        elif self._try_cookie_login():
             return
+        else:
+            LOGGER.info("Saved portal cookies passed requests validation but failed Selenium login.")
         if _headless_enabled():
             if self.captcha_handler is None:
                 raise RuntimeError("Saved portal cookies are missing or expired. Run locally once with visible Chrome to refresh data/cookies.json, then redeploy or provide persistent storage.")
@@ -223,6 +228,32 @@ class PortalBrowser:
 
         return False
 
+    def _has_valid_cookie_session(self) -> bool:
+        cookies = _load_cookies(self.cookies_file)
+        if not cookies:
+            return False
+
+        check_url = self._session_check_url()
+        try:
+            response = requests.get(
+                check_url,
+                cookies=_requests_cookie_jar(cookies),
+                allow_redirects=True,
+                timeout=int(self.config.browser.get("session_check_timeout_seconds", 15)),
+            )
+        except requests.RequestException as exc:
+            LOGGER.info("Requests cookie validation failed: %s", exc)
+            return True
+
+        if response.status_code >= 500:
+            LOGGER.info("Session check returned %s; falling back to Selenium validation.", response.status_code)
+            return True
+
+        if _looks_like_login_page(response.url, response.text, self.config):
+            return False
+
+        return response.ok
+
     def _wait_until_logged_in(self, timeout: int) -> None:
         indicator = self.config.selectors["login"].get("logged_in_indicator")
         error_selector = self.config.selectors["login"].get("login_error")
@@ -317,6 +348,46 @@ def _load_cookies(path: Path) -> list[dict[str, Any]]:
         return []
 
     return env_cookies if isinstance(env_cookies, list) else []
+
+
+def _requests_cookie_jar(cookies: list[dict[str, Any]]) -> requests.cookies.RequestsCookieJar:
+    jar = requests.cookies.RequestsCookieJar()
+    for cookie in cookies:
+        name = cookie.get("name")
+        value = cookie.get("value")
+        if not name or value is None:
+            continue
+        jar.set(
+            str(name),
+            str(value),
+            domain=cookie.get("domain"),
+            path=cookie.get("path", "/"),
+        )
+    return jar
+
+
+def _looks_like_login_page(url: str, html: str, config: AppConfig) -> bool:
+    lowered_url = url.lower()
+    login_url = config.portal["login_url"].lower()
+    if "login" in lowered_url or lowered_url.startswith(login_url):
+        return True
+
+    lowered_html = html.lower()
+    login_selectors = config.selectors["login"]
+    markers = [
+        "student_login",
+        "captcha",
+        "user_password",
+        "user_id",
+        "name=\"submit\"",
+        "id=\"token\"",
+    ]
+    configured_markers = [
+        str(login_selectors.get("enrollment_input", "")).lstrip("#.").lower(),
+        str(login_selectors.get("password_input", "")).lstrip("#.").lower(),
+        str(login_selectors.get("captcha_input", "")).lstrip("#.").lower(),
+    ]
+    return any(marker and marker in lowered_html for marker in [*markers, *configured_markers])
 
 
 def _configure_chrome_options(options: Options) -> None:

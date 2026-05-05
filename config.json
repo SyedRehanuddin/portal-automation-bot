@@ -55,6 +55,7 @@
     "window_width": 1366,
     "window_height": 900,
     "page_load_timeout_seconds": 45,
+    "session_check_timeout_seconds": 15,
     "manual_captcha_timeout_seconds": 300
   },
   "timetable": {
