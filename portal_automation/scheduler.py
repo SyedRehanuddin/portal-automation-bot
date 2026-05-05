@@ -11,7 +11,6 @@ from apscheduler.triggers.cron import CronTrigger
 from telegram.ext import Application
 
 from .config import AppConfig
-from .send_summary import build_summary
 from .storage import read_json
 from .timetable import format_today, get_cached_timetable, get_current_class, get_next_class, get_timetable
 
@@ -126,9 +125,27 @@ async def refresh_and_send_daily_schedule(application: Application, config: AppC
 
 async def send_total_attendance_update(application: Application, config: AppConfig, trigger_time: str | None = None) -> None:
     now = datetime.now(IST)
+    LOGGER.info(
+        "Attendance refresh trigger=%s now=%s source=portal",
+        trigger_time or now.strftime("%H:%M"),
+        now.isoformat(timespec="seconds"),
+    )
+
+    try:
+        from .telegram_bot import _run_check_locked
+
+        await _run_check_locked(_ApplicationContext(application), config, compare=False)
+    except Exception as exc:
+        LOGGER.exception("Attendance refresh failed.")
+        await application.bot.send_message(
+            chat_id=config.credentials.telegram_chat_id,
+            text=f"Attendance refresh failed: {_short_error(exc)}",
+        )
+        return
+
     state = read_json(config.resolve_path("data_file"), {})
     LOGGER.info(
-        "Attendance reminder trigger=%s now=%s source=cache has_state=%s",
+        "Attendance reminder trigger=%s now=%s source=refreshed_cache has_state=%s",
         trigger_time or now.strftime("%H:%M"),
         now.isoformat(timespec="seconds"),
         bool(state),
@@ -142,8 +159,7 @@ async def send_total_attendance_update(application: Application, config: AppConf
 
     await application.bot.send_message(
         chat_id=config.credentials.telegram_chat_id,
-        text=build_summary(state, "total"),
-        parse_mode="HTML",
+        text=_format_total_attendance(state),
     )
 
 
@@ -250,3 +266,37 @@ def _parse_time(value: str) -> tuple[int, int]:
 def _scheduler_enabled() -> bool:
     value = os.getenv("ENABLE_TIMETABLE_SCHEDULER", "true").strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _format_total_attendance(state: dict) -> str:
+    attendance = state.get("attendance") or {}
+    return (
+        f"Attendance: {attendance.get('overall_percent', '-')}%\n"
+        f"{_format_last_updated(state)}"
+    )
+
+
+def _format_last_updated(state: dict) -> str:
+    value = state.get("last_updated_at") or state.get("last_checked_at")
+    if not value:
+        return "Last updated: -"
+    try:
+        parsed = datetime.fromisoformat(str(value))
+        if parsed.tzinfo is None:
+            parsed = IST.localize(parsed)
+        parsed = parsed.astimezone(IST)
+        formatted = parsed.strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        formatted = str(value)
+    return f"Last updated: {formatted}"
+
+
+def _short_error(exc: BaseException) -> str:
+    text = str(exc).splitlines()[0].strip()
+    return (text or exc.__class__.__name__)[:300]
+
+
+class _ApplicationContext:
+    def __init__(self, application: Application) -> None:
+        self.application = application
+        self.bot = application.bot
