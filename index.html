@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tejaswi High School, Naimnagar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
+        }
+      }
+    </script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              navy: "#0B1F3A",
+              gold: "#C9973A",
+              slateText: "#4A5568",
+              softGray: "#F7F8FA",
+              cream: "#FFFDF7"
+            },
+            fontFamily: {
+              serif: ["Playfair Display", "serif"],
+              sans: ["Inter", "sans-serif"]
+            },
+            boxShadow: {
+              soft: "0 18px 55px rgba(11, 31, 58, 0.12)",
+              gold: "0 14px 35px rgba(201, 151, 58, 0.24)"
+            }
+          }
+        }
+      };
+    </script>
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", sans-serif;
+        color: #0b1f3a;
+        background: #ffffff;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4,
+      .display-font {
+        font-family: "Playfair Display", serif;
+        letter-spacing: 0;
+      }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(28px);
+        transition: opacity 800ms ease, transform 800ms ease;
+      }
+
+      .reveal.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .hero-item {
+        animation: heroFade 900ms ease forwards;
+        opacity: 0;
+        transform: translateY(22px);
+      }
+
+      .hero-item:nth-child(2) {
+        animation-delay: 120ms;
+      }
+
+      .hero-item:nth-child(3) {
+        animation-delay: 240ms;
+      }
+
+      .hero-item:nth-child(4) {
+        animation-delay: 360ms;
+      }
+
+      @keyframes heroFade {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .nav-link {
+        position: relative;
+      }
+
+      .nav-link::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        bottom: 4px;
+        width: 0;
+        height: 2px;
+        background: #c9973a;
+        transition: width 200ms ease;
+      }
+
+      .nav-link:hover::after {
+        width: calc(100% - 24px);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useEffect, useMemo, useRef, useState } from "https://esm.sh/react@18.2.0";
+      import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
+      import {
+        Facebook,
+        Instagram,
+        Mail,
+        MapPin,
+        Menu,
+        Phone,
+        Send,
+        ExternalLink,
+        X,
+        Youtube
+      } from "https://esm.sh/lucide-react@0.468.0?external=react";
+
+      const logoUrl = "https://www.tejaswinaimnagar.com/images/ths-logo-new.png";
+      const schoolImage = "./assets/tejaswi-campus.png";
+      const chairmanImage = "https://www.tejaswinaimnagar.com/images/chairman.jpg";
+      const principalImage = "https://www.tejaswinaimnagar.com/img/jprao.jpg";
+
+      const navItems = [
+        { label: "Home", href: "#home" },
+        { label: "About", href: "#about" },
+        { label: "Leadership", href: "#leadership" },
+        { label: "Achievements", href: "#achievements" },
+        { label: "Branches", href: "#branches" },
+        { label: "Testimonials", href: "#testimonials" },
+        { label: "Contact", href: "#contact" }
+      ];
+
+      function useReveal() {
+        useEffect(() => {
+          const nodes = document.querySelectorAll(".reveal");
+          const observer = new IntersectionObserver(
+            entries => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add("is-visible");
+                  observer.unobserve(entry.target);
+                }
+              });
+            },
+            { threshold: 0.15, rootMargin: "0px 0px -60px 0px" }
+          );
+          nodes.forEach(node => observer.observe(node));
+          return () => observer.disconnect();
+        }, []);
+      }
+
+      function useCountUp(target, start) {
+        const [value, setValue] = useState(0);
+
+        useEffect(() => {
+          if (!start) return;
+          const duration = 1500;
+          const started = performance.now();
+          let frameId;
+
+          const tick = now => {
+            const progress = Math.min((now - started) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            setValue(Math.floor(eased * target));
+            if (progress < 1) frameId = requestAnimationFrame(tick);
+          };
+
+          frameId = requestAnimationFrame(tick);
+          return () => cancelAnimationFrame(frameId);
+        }, [target, start]);
+
+        return value;
+      }
+
+      function StatNumber({ value, suffix, start }) {
+        const count = useCountUp(value, start);
+        return (
+          <span className="display-font text-4xl font-bold text-gold md:text-5xl">
+            {count.toLocaleString("en-IN")}
+            {suffix}
+          </span>
+        );
+      }
+
+      function Modal({ modal, onClose }) {
+        useEffect(() => {
+          if (!modal) return;
+          const onKeyDown = event => {
+            if (event.key === "Escape") onClose();
+          };
+          document.body.style.overflow = "hidden";
+          window.addEventListener("keydown", onKeyDown);
+          return () => {
+            document.body.style.overflow = "";
+            window.removeEventListener("keydown", onKeyDown);
+          };
+        }, [modal, onClose]);
+
+        if (!modal) return null;
+
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-navy/80 px-4 py-8 backdrop-blur-sm" onClick={onClose}>
+            <div className="reveal is-visible max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-md bg-white p-6 shadow-soft sm:p-9" onClick={event => event.stopPropagation()}>
+              <button
+                type="button"
+                className="ml-auto flex h-10 w-10 items-center justify-center rounded-full bg-softGray text-navy transition hover:bg-gold hover:text-navy"
+                onClick={onClose}
+                aria-label="Close modal"
+              >
+                <X size={20} />
+              </button>
+
+              {modal.type === "about" ? (
+                <div>
+                  <h2 className="mt-2 text-4xl font-bold text-navy">About Tejaswi High School</h2>
+                  <div className="mt-8 space-y-7 text-base leading-8 text-slateText">
+                    <section>
+                      <h3 className="font-sans text-lg font-extrabold text-navy">Our Vision</h3>
+                      <p className="mt-2">To impart integrated and comprehensive education that is formative and not merely informative, developing the full character and personality of every student toward self-fulfillment and service to society.</p>
+                    </section>
+                    <section>
+                      <h3 className="font-sans text-lg font-extrabold text-navy">Our Mission</h3>
+                      <p className="mt-2">To place students in an environment that develops reverence, tolerance and understanding across all cultures and beliefs. To enable students to imbibe the four pillars of Culture, Compassion, Character and Courage, and to provide value-based education that prepares them for both academic excellence and a life of integrity.</p>
+                    </section>
+                    <section>
+                      <h3 className="font-sans text-lg font-extrabold text-navy">Why Choose Tejaswi</h3>
+                      <p className="mt-2">Tejaswi believes that life must have a spiritual orientation alongside academic rigor. We empower students to be free, morally responsible and integrated individuals. Our non-communal, non-sectarian approach places emphasis on the permanent values of life as understood by both ancient and modern thinkers.</p>
+                    </section>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <h2 className="mt-2 text-4xl font-bold text-navy">{modal.heading}</h2>
+                  <div className="mt-7 flex flex-col gap-6 sm:flex-row">
+                    <img src={modal.photo} alt={modal.name} className="h-[220px] w-[200px] flex-none rounded-lg object-cover" />
+                    <div>
+                      <h3 className="text-2xl font-bold text-navy">{modal.name}</h3>
+                      <p className="mt-4 text-base leading-8 text-slateText">{modal.message}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function Navbar() {
+        const [menuOpen, setMenuOpen] = useState(false);
+        const [scrolled, setScrolled] = useState(false);
+
+        useEffect(() => {
+          const onScroll = () => setScrolled(window.scrollY > 12);
+          onScroll();
+          window.addEventListener("scroll", onScroll);
+          return () => window.removeEventListener("scroll", onScroll);
+        }, []);
+
+        return (
+          <header className={`fixed inset-x-0 top-0 z-50 bg-navy transition-shadow duration-300 ${scrolled ? "shadow-xl shadow-black/25" : ""}`}>
+            <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
+              <a href="#home" className="flex items-center" aria-label="Tejaswi High School home">
+                <img src={logoUrl} alt="Tejaswi High School logo" className="h-16 w-16 rounded-full bg-white object-contain p-1" />
+              </a>
+
+              <div className="hidden items-center gap-7 lg:flex">
+                {navItems.map(item => (
+                  <a key={item.label} href={item.href} className="nav-link rounded-full px-3 py-2 text-sm font-semibold text-white/90 transition duration-200 hover:bg-gold/10 hover:text-white">
+                    {item.label}
+                  </a>
+                ))}
+              </div>
+
+              <a href="#contact" className="hidden rounded-full bg-gold px-5 py-3 text-sm font-bold text-navy shadow-gold transition hover:-translate-y-0.5 hover:bg-white lg:inline-flex">
+                Enquire Now
+              </a>
+
+              <button
+                type="button"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-white lg:hidden"
+                onClick={() => setMenuOpen(open => !open)}
+                aria-label="Toggle navigation menu"
+              >
+                {menuOpen ? <X size={22} /> : <Menu size={22} />}
+              </button>
+            </nav>
+
+            {menuOpen && (
+              <div className="border-t border-white/10 bg-navy px-5 py-5 lg:hidden">
+                <div className="mx-auto flex max-w-7xl flex-col gap-4">
+                  {navItems.map(item => (
+                    <a key={item.label} href={item.href} onClick={() => setMenuOpen(false)} className="rounded-md px-2 py-2 text-base font-semibold text-white/90 transition duration-200 hover:bg-gold/10 hover:text-white">
+                      {item.label}
+                    </a>
+                  ))}
+                  <a href="#contact" onClick={() => setMenuOpen(false)} className="mt-2 rounded-full bg-gold px-5 py-3 text-center text-sm font-bold text-navy">
+                    Enquire Now
+                  </a>
+                </div>
+              </div>
+            )}
+          </header>
+        );
+      }
+
+      function Hero() {
+        return (
+          <section id="home" className="relative min-h-[90vh] overflow-hidden bg-navy pt-20">
+            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${schoolImage})` }} aria-hidden="true" />
+            <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent" aria-hidden="true" />
+            <div className="relative mx-auto flex min-h-[calc(90vh-5rem)] max-w-7xl items-center px-5 py-20 sm:px-8 lg:px-10">
+              <div className="max-w-3xl">
+                <p className="hero-item mb-5 text-sm font-extrabold uppercase tracking-[0.22em] text-gold">Est. 1993 | CBSE Affiliated</p>
+                <h1 className="hero-item text-5xl font-bold leading-tight text-white sm:text-6xl lg:text-7xl">Shaping Lives, Building Futures</h1>
+                <p className="hero-item mt-6 max-w-2xl text-lg font-medium text-white/85 sm:text-xl">32 years of academic excellence in the heart of Hanamkonda</p>
+                <div className="hero-item mt-9 flex flex-col gap-4 sm:flex-row">
+                  <a href="#contact" className="rounded-full bg-gold px-7 py-4 text-center text-sm font-extrabold text-navy shadow-gold transition hover:-translate-y-1 hover:bg-white">
+                    Apply for Admission
+                  </a>
+                  <a href="#about" className="rounded-full border border-white px-7 py-4 text-center text-sm font-extrabold text-white transition hover:-translate-y-1 hover:bg-white hover:text-navy">
+                    Explore the School
+                  </a>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function StatsBar() {
+        const ref = useRef(null);
+        const [start, setStart] = useState(false);
+
+        useEffect(() => {
+          const observer = new IntersectionObserver(
+            ([entry]) => {
+              if (entry.isIntersecting) {
+                setStart(true);
+                observer.disconnect();
+              }
+            },
+            { threshold: 0.35 }
+          );
+          if (ref.current) observer.observe(ref.current);
+          return () => observer.disconnect();
+        }, []);
+
+        const stats = [
+          { value: 32, suffix: "+", label: "Years of Excellence" },
+          { value: 9658, suffix: "+", label: "Students Shaped" },
+          { value: 100, suffix: "%", label: "Board Results" },
+          { value: 5, suffix: "", label: "Branches Across Warangal" }
+        ];
+
+        return (
+          <section ref={ref} className="bg-navy">
+            <div className="mx-auto grid max-w-7xl grid-cols-1 px-5 py-8 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
+              {stats.map((stat, index) => (
+                <div key={stat.label} className={`py-5 text-center ${index > 0 ? "border-t border-white/20 sm:border-l sm:border-t-0" : ""} ${index === 2 ? "sm:border-t lg:border-t-0" : ""}`}>
+                  <StatNumber value={stat.value} suffix={stat.suffix} start={start} />
+                  <p className="mt-2 text-sm font-semibold uppercase tracking-[0.14em] text-white/75">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      }
+
+      function About({ onLearnMore }) {
+        return (
+          <section id="about" className="bg-white py-24">
+            <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:px-10">
+              <div className="reveal relative overflow-hidden rounded-md bg-gold/10">
+                <img src={schoolImage} alt="Tejaswi High School campus" className="h-[440px] w-full object-cover sepia-[0.12] saturate-[0.92]" />
+                <div className="absolute inset-0 bg-gradient-to-t from-navy/35 to-transparent" />
+              </div>
+              <div className="reveal">
+                <p className="text-sm font-extrabold uppercase tracking-[0.22em] text-gold">Who We Are</p>
+                <h2 className="mt-4 text-4xl font-bold leading-tight text-navy sm:text-5xl">A Legacy Built on Values and Learning</h2>
+                <div className="mt-7 space-y-5 text-base leading-8 text-slateText">
+                  <p>Founded in 1993, Tejaswi High School, Naimnagar has grown from a committed local institution into a trusted name for families across Hanamkonda and Warangal district.</p>
+                  <p>Our academic philosophy is rooted in the four Cs: Culture, Compassion, Character, and Courage. These values guide how students learn, lead, participate, and prepare for the world beyond school.</p>
+                  <p>As a CBSE-affiliated school, Tejaswi combines a strong curriculum foundation with focused preparation for competitive pathways including IIT foundations, Olympiads, and higher academic challenges.</p>
+                </div>
+                <button type="button" onClick={onLearnMore} className="mt-8 inline-flex text-base font-extrabold text-gold transition hover:translate-x-1 hover:text-navy">
+                  Learn More <span className="ml-2">-&gt;</span>
+                </button>
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function WhyTejaswi() {
+        const features = [
+          {
+            number: "01",
+            title: "Proven Academic Results",
+            text: "Tejaswi carries 32 years of 100% board results with pride. Our students have been consistent Olympiad achievers at state and national level."
+          },
+          {
+            number: "02",
+            title: "CBSE Curriculum with Depth",
+            text: "A rigorous CBSE foundation is strengthened with additional focus on competitive exams. Students receive structured exposure for IIT pathways and Olympiads."
+          },
+          {
+            number: "03",
+            title: "Affordable Quality Education",
+            text: "Premium schooling remains accessible to all sections of society. The school keeps teaching quality central without compromising affordability."
+          },
+          {
+            number: "04",
+            title: "Experienced Faculty",
+            text: "Professionally mature teachers bring stability to every classroom. Their attention to individual student growth shapes confident learners."
+          }
+        ];
+
+        return (
+          <section className="bg-softGray py-24">
+            <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+              <div className="reveal mx-auto max-w-3xl text-center">
+                <h2 className="text-4xl font-bold text-navy sm:text-5xl">Why Families Choose Tejaswi</h2>
+                <p className="mt-4 text-lg text-slateText">Three decades of trust, built one student at a time.</p>
+              </div>
+              <div className="mt-14 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {features.map(feature => (
+                  <article key={feature.number} className="reveal border-l-4 border-gold bg-white p-7 shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-soft">
+                    <p className="display-font text-5xl italic text-gold">{feature.number}</p>
+                    <h3 className="mt-7 text-2xl font-bold text-navy">{feature.title}</h3>
+                    <p className="mt-4 text-base leading-7 text-slateText">{feature.text}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function Leadership({ onOpenMessage }) {
+        const leaders = [
+          {
+            key: "chairman",
+            name: "Jenna Reddy Revoori",
+            title: "Chairman",
+            image: chairmanImage,
+            message: "Education at Tejaswi is a responsibility carried with discipline and affection. Our goal is to prepare children who think clearly, act with values, and contribute with confidence.",
+            modal: {
+              heading: "From the Chairman",
+              photo: chairmanImage,
+              name: "Jenna Reddy Revoori",
+              message: "The words of Chanakya that education is one's best friend have guided my entire journey. Hailing from a background with all comforts, it was my restlessness as a young person and my deep interest in education that led me to teaching. When applying new ideas in the classroom became constrained, I chose to build a school of my own vision. My dream was a school built on moral ideologies, valued education and genuine care for children. That dream became Tejaswi. Today, five branches across Warangal District carry forward those same ideologies, and hearing from students around the world who connect with gratitude for being part of our Tejaswi family gives me immeasurable satisfaction."
+            }
+          },
+          {
+            key: "principal",
+            name: "J Purna Chander Rao",
+            title: "School Principal",
+            image: principalImage,
+            message: "Every child arrives with promise. Our classrooms are built to nurture that promise through careful teaching, steady encouragement, and high academic expectations.",
+            modal: {
+              heading: "From the Principal",
+              photo: principalImage,
+              name: "J Purna Chander Rao",
+              message: "Education is a complete process that leads to the full potential of the child. Our endeavor at Tejaswi is to equip every student with real life skills: planning, organizing, questioning, reasoning, communicating effectively and facing challenges with confidence. We focus on developing global citizens with tolerance and appreciation for diverse cultures. Our students must become self-motivated, confident decision makers ready for leadership. We also believe in giving teachers the freedom to develop creative methods, and in democratic decision making among students and staff. The essence of our philosophy is simple: every child can blossom uniquely, and our responsibility is to create the environment where that happens."
+            }
+          }
+        ];
+
+        return (
+          <section id="leadership" className="bg-white py-24">
+            <div className="mx-auto max-w-6xl px-5 sm:px-8 lg:px-10">
+              <div className="reveal text-center">
+                <h2 className="text-4xl font-bold text-navy sm:text-5xl">The People Behind Tejaswi</h2>
+              </div>
+              <div className="mt-14 grid gap-8 md:grid-cols-2">
+                {leaders.map(leader => (
+                  <article key={leader.key} className="reveal rounded-md bg-white p-8 text-center shadow-soft">
+                    <img src={leader.image} alt={`${leader.name}, ${leader.title}`} className="mx-auto h-[220px] w-[200px] rounded-lg object-cover ring-4 ring-gold/25" />
+                    <h3 className="mt-7 text-2xl font-bold text-navy">{leader.name}</h3>
+                    <p className="mt-1 display-font text-lg italic text-gold">{leader.title}</p>
+                    <p className="mx-auto mt-5 max-w-md text-base leading-7 text-slateText">{leader.message}</p>
+                    <button type="button" onClick={() => onOpenMessage(leader.modal)} className="mt-6 inline-flex font-bold text-gold transition hover:text-navy">
+                      Read Full Message
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function Achievements() {
+        const achievements = [
+          { competition: "CV Raman Olympiad", student: "V.Saketh", rank: "State 2nd, Class 9", year: "2018-19" },
+          { competition: "CV Raman Olympiad", student: "V.Karthik", rank: "State 4th, Class 8", year: "2018-19" },
+          { competition: "National Handwriting", student: "V.Saketh Sharma", rank: "State 1st", year: "2018" },
+          { competition: "Multiple Olympiads", student: "T.Siddhartha", rank: "Multiple Olympiad ranks", year: "2018-19" }
+        ];
+
+        return (
+          <section id="achievements" className="bg-navy py-24">
+            <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+              <div className="reveal mx-auto max-w-3xl text-center">
+                <h2 className="text-4xl font-bold text-white sm:text-5xl">Our Students on the National Stage</h2>
+                <p className="mt-4 text-lg text-white/70">Olympiad toppers, state and district ranks across Science, Mathematics, English and more.</p>
+              </div>
+              <div className="mt-14 grid gap-5 overflow-x-auto pb-3 sm:grid-cols-2 lg:grid-cols-4">
+                {achievements.map(item => (
+                  <article key={`${item.student}-${item.competition}`} className="reveal min-w-[260px] rounded-md border border-white/10 bg-white/10 p-6 backdrop-blur transition hover:-translate-y-2 hover:border-gold/60">
+                    <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-gold">{item.competition}</p>
+                    <h3 className="mt-5 text-2xl font-bold text-white">{item.student}</h3>
+                    <p className="mt-3 text-base font-semibold text-white/80">{item.rank}</p>
+                    <p className="mt-6 display-font text-xl italic text-gold">{item.year}</p>
+                  </article>
+                ))}
+              </div>
+              <p className="reveal mt-8 text-center text-sm italic text-white/60">Achievement records from 2018-19. Updated records coming soon.</p>
+              <div className="reveal mt-8 text-center">
+                <a href="#contact" className="inline-flex rounded-full bg-gold px-7 py-4 text-sm font-extrabold text-navy transition hover:-translate-y-1 hover:bg-white">
+                  View All Achievements
+                </a>
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function Branches() {
+        const branches = [
+          { name: "THS Naimnagar", href: "https://maps.google.com/?q=Tejaswi+High+School+Naimnagar+Hanamkonda" },
+          { name: "THS Pochammakunta", href: "https://www.google.com/maps/place/Tejaswi+High+School+(Pochammakunta)/@18.0173567,79.5560317,927m" },
+          { name: "THS Prashanth Nagar", href: "https://maps.google.com/?q=XGVJ+65P+Prashanthnagar+Colony+Hanamkonda+Telangana" },
+          { name: "TPS Hunter Road", href: "https://maps.google.com/?q=Hunter+Rd+Shyampet+Hanamkonda+Telangana+506001" },
+          { name: "THS Erragattu", href: "https://maps.google.com/?q=10-69/4+Erragattu+Hasanparthy+Warangal+Telangana+506015" }
+        ];
+
+        return (
+          <section id="branches" className="bg-softGray py-24">
+            <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+              <div className="reveal mx-auto max-w-3xl text-center">
+                <h2 className="text-4xl font-bold text-navy sm:text-5xl">Five Schools, One Vision</h2>
+                <p className="mt-4 text-lg text-slateText">Tejaswi Group of Schools across Warangal District.</p>
+              </div>
+              <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {branches.map(branch => (
+                  <a key={branch.name} href={branch.href} target="_blank" rel="noopener noreferrer" className="reveal group rounded-md border border-transparent bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:border-gold/70 hover:shadow-soft">
+                    <h3 className="text-2xl font-bold text-navy transition group-hover:text-gold">{branch.name}</h3>
+                    <div className="mt-5 flex gap-3 text-slateText">
+                      <MapPin className="mt-1 h-5 w-5 flex-none text-gold" />
+                      <p className="leading-7">[Address placeholder - to be updated by school]</p>
+                    </div>
+                    <span className="mt-7 inline-flex items-center gap-2 text-sm font-extrabold text-gold">
+                      Open in Maps <ExternalLink size={16} />
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function Gallery() {
+        return (
+          <section id="gallery" className="bg-white py-24">
+            <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+              <div className="reveal grid items-end gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+                <div>
+                  <p className="text-sm font-extrabold uppercase tracking-[0.22em] text-gold">Gallery</p>
+                  <h2 className="mt-4 text-4xl font-bold text-navy sm:text-5xl">Campus Moments and School Life</h2>
+                </div>
+                <p className="text-base leading-8 text-slateText">A dedicated gallery area is ready for classroom activities, assemblies, annual days, and student celebrations from the Tejaswi community.</p>
+              </div>
+              <div className="mt-12 grid gap-5 md:grid-cols-3">
+                {[schoolImage, schoolImage, schoolImage].map((image, index) => (
+                  <div key={index} className="reveal overflow-hidden rounded-md">
+                    <img src={image} alt={`Tejaswi school gallery placeholder ${index + 1}`} className="h-72 w-full object-cover transition duration-500 hover:scale-105" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function Testimonials() {
+        const testimonials = [1, 2, 3];
+
+        return (
+          <section id="testimonials" className="bg-cream py-24">
+            <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+              <div className="reveal text-center">
+                <h2 className="text-4xl font-bold text-navy sm:text-5xl">What Parents Say</h2>
+              </div>
+              <div className="mt-14 grid gap-6 md:grid-cols-3">
+                {testimonials.map(index => (
+                  <article key={index} className="reveal rounded-md bg-white p-7 shadow-sm">
+                    <p className="display-font text-6xl leading-none text-gold">“</p>
+                    <p className="mt-1 text-base leading-7 text-slateText">[Parent Testimonial - to be filled by school]</p>
+                    <p className="mt-6 font-bold text-navy">[Parent Name]</p>
+                    <p className="mt-2 text-gold" aria-label="5 star rating">★★★★★</p>
+                  </article>
+                ))}
+              </div>
+              <p className="reveal mt-8 text-center text-sm italic text-slateText">Testimonials to be updated with real parent feedback before launch.</p>
+            </div>
+          </section>
+        );
+      }
+
+      function Contact() {
+        const classOptions = useMemo(() => Array.from({ length: 10 }, (_, index) => `Class ${index + 1}`), []);
+
+        return (
+          <section id="contact" className="bg-white py-24">
+            <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+              <div className="grid overflow-hidden rounded-md shadow-soft lg:grid-cols-2">
+                <div className="reveal bg-navy p-8 text-white sm:p-12">
+                  <p className="text-sm font-extrabold uppercase tracking-[0.22em] text-gold">Contact</p>
+                  <h2 className="mt-4 text-4xl font-bold sm:text-5xl">Visit Tejaswi High School</h2>
+                  <div className="mt-9 space-y-6 text-white/80">
+                    <div className="flex gap-4">
+                      <MapPin className="mt-1 h-5 w-5 flex-none text-gold" />
+                      <p>Jagruti Colony, Naim Nagar, Hanamkonda, Telangana</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <Phone className="mt-1 h-5 w-5 flex-none text-gold" />
+                      <a href="tel:9849037725" className="hover:text-gold">9849037725</a>
+                    </div>
+                    <div className="flex gap-4">
+                      <Mail className="mt-1 h-5 w-5 flex-none text-gold" />
+                      <a href="mailto:tejaswischool@yahoo.com" className="hover:text-gold">tejaswischool@yahoo.com</a>
+                    </div>
+                  </div>
+                  <div className="mt-10 flex gap-4">
+                    {[Instagram, Facebook, Youtube].map((Icon, index) => (
+                      <a key={index} href="#" aria-label="Social media placeholder" className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-white transition hover:border-gold hover:bg-gold hover:text-navy">
+                        <Icon size={20} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="reveal bg-white p-8 sm:p-12">
+                  <h3 className="text-3xl font-bold text-navy">Enquiry Form</h3>
+                  <form action="#" method="POST" className="mt-7 space-y-5">
+                    <label className="block">
+                      <span className="text-sm font-bold text-navy">Full Name</span>
+                      <input type="text" name="name" className="mt-2 w-full rounded-md border border-slate-200 px-4 py-3 text-base outline-none transition focus:border-gold focus:ring-4 focus:ring-gold/20" required />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-bold text-navy">Phone Number</span>
+                      <input type="tel" name="phone" className="mt-2 w-full rounded-md border border-slate-200 px-4 py-3 text-base outline-none transition focus:border-gold focus:ring-4 focus:ring-gold/20" required />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-bold text-navy">Child's Class</span>
+                      <select name="class" className="mt-2 w-full rounded-md border border-slate-200 px-4 py-3 text-base outline-none transition focus:border-gold focus:ring-4 focus:ring-gold/20" required>
+                        <option value="">Select class</option>
+                        {classOptions.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-bold text-navy">Message</span>
+                      <textarea name="message" rows="4" className="mt-2 w-full resize-none rounded-md border border-slate-200 px-4 py-3 text-base outline-none transition focus:border-gold focus:ring-4 focus:ring-gold/20"></textarea>
+                    </label>
+                    <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-gold px-7 py-4 text-sm font-extrabold text-navy transition hover:-translate-y-1 hover:bg-navy hover:text-white sm:w-auto">
+                      <Send size={18} /> Send Enquiry
+                    </button>
+                  </form>
+                </div>
+              </div>
+              <iframe
+                title="Tejaswi High School Naimnagar map"
+                src="https://maps.google.com/maps?q=Tejaswi+High+School+Naimnagar+Jagruti+Colony+Hanamkonda&output=embed"
+                width="100%"
+                height="300"
+                loading="lazy"
+                className="reveal mt-8 rounded-md border-0"
+                referrerPolicy="no-referrer-when-downgrade"
+              ></iframe>
+            </div>
+          </section>
+        );
+      }
+
+      function Footer() {
+        const branches = ["THS Naimnagar", "THS Pochammakunta", "THS Prashanth Nagar", "TPS Hunter Road", "THS Erragattu"];
+
+        return (
+          <footer className="bg-navy text-white">
+            <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-2 lg:grid-cols-[1.2fr_0.85fr_0.85fr_1fr] lg:px-10">
+              <div>
+                <div className="flex items-center gap-3">
+                  <img src={logoUrl} alt="Tejaswi High School logo" className="h-12 w-12 rounded-full bg-white object-contain p-1" />
+                  <span className="display-font text-2xl font-bold text-gold">Tejaswi High School</span>
+                </div>
+                <p className="mt-5 max-w-sm leading-7 text-white/70">A CBSE-affiliated institution carrying three decades of learning, values, and academic excellence in Hanamkonda.</p>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gold">Quick Links</h3>
+                <div className="mt-5 flex flex-col gap-3 text-white/70">
+                  {navItems.map(item => <a key={item.label} href={item.href} className="hover:text-gold">{item.label}</a>)}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gold">Branches</h3>
+                <div className="mt-5 flex flex-col gap-3 text-white/70">
+                  {branches.map(branch => <span key={branch}>{branch}</span>)}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gold">Contact Info</h3>
+                <div className="mt-5 space-y-3 text-white/70">
+                  <p>Jagruti Colony, Naim Nagar, Hanamkonda</p>
+                  <p>9849037725</p>
+                  <p>tejaswischool@yahoo.com</p>
+                </div>
+              </div>
+            </div>
+            <div className="mx-auto max-w-7xl border-t border-gold/40 px-5 py-6 text-center text-sm text-white/60 sm:px-8 lg:px-10">
+              1993-2026 Tejaswi High School, Naimnagar. All Rights Reserved.
+            </div>
+          </footer>
+        );
+      }
+
+      function App() {
+        useReveal();
+        const [modal, setModal] = useState(null);
+
+        return (
+          <>
+            <Navbar />
+            <main>
+              <Hero />
+              <StatsBar />
+              <About onLearnMore={() => setModal({ type: "about" })} />
+              <WhyTejaswi />
+              <Leadership onOpenMessage={setModal} />
+              <Achievements />
+              <Branches />
+              <Gallery />
+              <Testimonials />
+              <Contact />
+            </main>
+            <Footer />
+            <Modal modal={modal} onClose={() => setModal(null)} />
+          </>
+        );
+      }
+
+      createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>

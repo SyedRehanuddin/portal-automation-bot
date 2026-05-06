@@ -83,8 +83,8 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Portal Automation Telegram Bot", lifespan=lifespan)
 
-    @app.get("/")
-    async def root() -> dict[str, str]:
+    @app.api_route("/", methods=["GET", "HEAD"])
+    async def root():
         return {"status": "ok", "service": "portal_automation"}
 
     @app.get("/health")
