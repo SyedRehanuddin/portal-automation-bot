@@ -14,6 +14,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 
 from .config import AppConfig
@@ -91,11 +92,13 @@ class PortalBrowser:
     def open_authenticated(self, url: str) -> None:
         self.ensure_logged_in()
         self.driver_or_raise.get(url)
+        self.dismiss_popups()
         time.sleep(1)
         if self.is_session_expired():
             LOGGER.info("Session expired while opening %s; logging in again.", url)
             self.ensure_logged_in()
             self.driver_or_raise.get(url)
+            self.dismiss_popups()
 
     def open_first_matching_link(self, keywords: list[str]) -> bool:
         self.ensure_logged_in()
@@ -141,6 +144,7 @@ class PortalBrowser:
         login = self.config.selectors["login"]
         LOGGER.info("Opening login page for manual CAPTCHA login.")
         driver.get(self.config.portal["login_url"])
+        self.dismiss_popups()
 
         self._type_if_present(login["enrollment_input"], self.config.credentials.enrollment_number)
         self._type_if_present(login["password_input"], self.config.credentials.password)
@@ -150,6 +154,7 @@ class PortalBrowser:
             LOGGER.info("Waiting for manual CAPTCHA solving. Complete CAPTCHA in Chrome.")
             try:
                 captcha = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, captcha_selector)))
+                self.dismiss_popups()
                 captcha.click()
             except TimeoutException:
                 LOGGER.warning("CAPTCHA input was not found. Continuing; portal may use a different CAPTCHA layout.")
@@ -176,10 +181,12 @@ class PortalBrowser:
         for attempt in range(1, max_attempts + 1):
             LOGGER.info("Opening login page for Telegram-assisted CAPTCHA login attempt %d.", attempt)
             driver.get(self.config.portal["login_url"])
+            self.dismiss_popups()
             self._type_if_present(login["enrollment_input"], self.config.credentials.enrollment_number)
             self._type_if_present(login["password_input"], self.config.credentials.password)
 
             captcha = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, captcha_selector)))
+            self.dismiss_popups()
             captcha.click()
             captcha_code = self.captcha_handler(self, attempt, max_attempts).strip()
             if not captcha_code:
@@ -210,6 +217,16 @@ class PortalBrowser:
         cookies = _dedupe_cookies(self.driver_or_raise.get_cookies())
         write_json(self.cookies_file, cookies)
         LOGGER.info("Saved %d cookies to %s", len(cookies), self.cookies_file)
+
+    def dismiss_popups(self, max_passes: int = 3) -> None:
+        driver = self.driver_or_raise
+        for _ in range(max_passes):
+            closed_any = False
+            closed_any = self._close_visible_popup_buttons() or closed_any
+            closed_any = self._close_popup_backdrops() or closed_any
+            if not closed_any:
+                break
+            time.sleep(0.5)
 
     def _try_cookie_login(self) -> bool:
         cookies = _load_cookies(self.cookies_file)
@@ -250,6 +267,7 @@ class PortalBrowser:
         end_at = time.time() + timeout
 
         while time.time() < end_at:
+            self.dismiss_popups()
             if indicator and self._has_element(indicator):
                 LOGGER.info("Login indicator found.")
                 return
@@ -274,6 +292,8 @@ class PortalBrowser:
             if not self.is_session_expired():
                 return
 
+            self.dismiss_popups()
+
             if captcha_selector:
                 try:
                     value = self.driver_or_raise.find_element(By.CSS_SELECTOR, captcha_selector).get_attribute("value") or ""
@@ -296,6 +316,7 @@ class PortalBrowser:
 
     def _type_if_present(self, selector: str, value: str) -> None:
         element = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+        self.dismiss_popups()
         element.clear()
         element.send_keys(value)
 
@@ -307,6 +328,73 @@ class PortalBrowser:
 
     def _session_check_url(self) -> str:
         return _session_check_url(self.config)
+
+    def _close_visible_popup_buttons(self) -> bool:
+        driver = self.driver_or_raise
+        selectors = [
+            ".modal.show .close",
+            ".modal.show [data-dismiss='modal']",
+            ".modal.show .btn-close",
+            ".modal.show button[aria-label='Close']",
+            ".modal.show button.close",
+            ".modal.show .fa-times",
+            ".modal.show .bi-x",
+            ".modal.show .bi-x-lg",
+            ".modal.show [class*='close']",
+        ]
+        seen: set[str] = set()
+        for selector in selectors:
+            for element in driver.find_elements(By.CSS_SELECTOR, selector):
+                try:
+                    element_id = element.id
+                except WebDriverException:
+                    continue
+                if element_id in seen:
+                    continue
+                seen.add(element_id)
+                try:
+                    if not element.is_displayed():
+                        continue
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                    driver.execute_script("arguments[0].click();", element)
+                    LOGGER.info("Closed popup using selector %s", selector)
+                    return True
+                except WebDriverException:
+                    continue
+
+        for element in driver.find_elements(By.CSS_SELECTOR, ".modal.show button, .modal.show a, .modal.show span"):
+            try:
+                if not element.is_displayed():
+                    continue
+                label = " ".join(
+                    [
+                        element.text or "",
+                        element.get_attribute("aria-label") or "",
+                        element.get_attribute("title") or "",
+                        element.get_attribute("class") or "",
+                    ]
+                ).strip().lower()
+                if not any(token in label for token in ("close", "dismiss", "times", "cross", "x")):
+                    continue
+                driver.execute_script("arguments[0].click();", element)
+                LOGGER.info("Closed popup using text/class match.")
+                return True
+            except WebDriverException:
+                continue
+        return False
+
+    def _close_popup_backdrops(self) -> bool:
+        driver = self.driver_or_raise
+        for backdrop in driver.find_elements(By.CSS_SELECTOR, ".modal-backdrop.show, .modal.show"):
+            try:
+                if not backdrop.is_displayed():
+                    continue
+                ActionChains(driver).move_to_element_with_offset(backdrop, 5, 5).click().perform()
+                LOGGER.info("Clicked popup backdrop.")
+                return True
+            except WebDriverException:
+                continue
+        return False
 
 
 def _dedupe_cookies(cookies: list[dict[str, Any]]) -> list[dict[str, Any]]:

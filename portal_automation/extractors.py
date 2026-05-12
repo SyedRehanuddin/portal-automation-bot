@@ -25,6 +25,7 @@ class PortalExtractor:
     def extract_attendance(self) -> dict[str, Any]:
         config = self.browser.config
         self.browser.open_authenticated(config.portal["attendance_url"])
+        self.browser.dismiss_popups()
 
         tables = self.browser.driver_or_raise.find_elements(By.CSS_SELECTOR, config.selectors["attendance"].get("table", "table"))
         result: dict[str, Any] = {
@@ -74,6 +75,7 @@ class PortalExtractor:
         header_selector = selectors.get("header", "thead th")
 
         driver = self.browser.driver_or_raise
+        self.browser.dismiss_popups()
         table = self._find_table_or_discover_section(section, table_selector)
         headers = [element.text.strip() for element in table.find_elements(By.CSS_SELECTOR, header_selector)]
         headers = [header for header in headers if header]
