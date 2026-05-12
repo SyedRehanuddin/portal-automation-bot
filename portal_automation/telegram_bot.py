@@ -358,7 +358,7 @@ async def _reply_timetable(update: Update, context: ContextTypes.DEFAULT_TYPE, i
     try:
         timetable_data = get_cached_timetable(config)
         if not timetable_data:
-            await _reply(update, "Timetable cache not available. Run /schedule once to refresh timetable.")
+            await _reply(update, "Timetable not available right now.")
             return
     except TimetableError:
         await _reply(update, "Timetable not available")

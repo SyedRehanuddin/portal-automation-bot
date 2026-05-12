@@ -187,9 +187,19 @@ async def send_class_update(application: Application, config: AppConfig, trigger
         return
 
     timetable = get_cached_timetable(config)
-    if not _has_day_cache(timetable, now):
+    if not timetable:
         LOGGER.warning(
-            "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=cache status=missing_day_cache",
+            "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=cache status=missing_cache",
+            trigger_time or now.strftime("%H:%M"),
+            now.isoformat(timespec="seconds"),
+            now.strftime("%A"),
+            sorted(timetable),
+        )
+        return
+
+    if not _has_day_cache(timetable, now):
+        LOGGER.info(
+            "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=cache status=no_classes_today",
             trigger_time or now.strftime("%H:%M"),
             now.isoformat(timespec="seconds"),
             now.strftime("%A"),
@@ -197,7 +207,7 @@ async def send_class_update(application: Application, config: AppConfig, trigger
         )
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
-            text=_missing_cache_message(now),
+            text="No classes today",
         )
         return
 
