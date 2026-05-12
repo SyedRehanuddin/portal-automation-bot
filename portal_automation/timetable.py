@@ -27,6 +27,9 @@ IST = pytz.timezone("Asia/Kolkata")
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 ALL_DAYS = DAYS + ["Saturday", "Sunday"]
 TIMES = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
+LUNCH_START = "12:00"
+LUNCH_END = "13:00"
+LUNCH_ENTRY = {"subject": "Lunch Break", "room": "-", "type": ""}
 
 
 class TimetableError(RuntimeError):
@@ -154,33 +157,32 @@ def parse_ajax_data(response: dict[str, Any]) -> dict[str, dict[str, dict[str, s
     return data
 
 
-def get_current_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> tuple[str, str, dict[str, str]] | None:
+def get_current_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> tuple[str, dict[str, Any]] | None:
     now = _coerce_ist(now)
     day = now.strftime("%A")
     if day not in DAYS:
         return None
 
     current_time = now.time()
-    rows = timetable.get(day, {})
-    for slot in _sorted_slots(rows):
-        start, end = _slot_range(slot, now)
+    for block in _day_blocks(timetable, day, now):
+        start = block["start"]
+        end = block["end"]
         if start <= current_time < end:
-            return day, slot, timetable[day][slot]
+            return day, block
     return None
 
 
-def get_next_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> tuple[str, str, dict[str, str]] | None:
+def get_next_class(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> tuple[str, dict[str, Any]] | None:
     now = _coerce_ist(now)
     day = now.strftime("%A")
     if day not in DAYS:
         return None
 
     current_time = now.time()
-    rows = timetable.get(day, {})
-    for slot in _sorted_slots(rows):
-        start = _slot_start_time(slot)
+    for block in _day_blocks(timetable, day, now):
+        start = block["start"]
         if start > current_time:
-            return day, slot, timetable[day][slot]
+            return day, block
     return None
 
 
@@ -191,8 +193,8 @@ def format_now(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | 
     current = get_current_class(timetable, now)
     if current is None:
         return "No class right now"
-    _, slot, entry = current
-    return _format_class(entry, slot, include_end=True)
+    _, block = current
+    return _format_block(block)
 
 
 def format_next(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
@@ -202,8 +204,8 @@ def format_next(timetable: dict[str, dict[str, dict[str, str]]], now: datetime |
     next_class = get_next_class(timetable, now)
     if next_class is None:
         return "No more classes today"
-    _, slot, entry = next_class
-    return "Next Class:\n" + _format_class(entry, slot, include_end=False)
+    _, block = next_class
+    return "Next Class:\n" + _format_block(block)
 
 
 def format_today(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
@@ -215,21 +217,17 @@ def format_today(timetable: dict[str, dict[str, dict[str, str]]], now: datetime 
 
 
 def format_day(timetable: dict[str, dict[str, dict[str, str]]], day: str) -> str:
-    rows = timetable.get(day, {})
-    if not rows:
+    if day not in DAYS:
+        return f"{day} Schedule:\nNo classes"
+
+    blocks = _day_blocks(timetable, day)
+    class_blocks = [block for block in blocks if block["kind"] == "class"]
+    if not class_blocks:
         return f"{day} Schedule:\nNo classes"
 
     lines = [f"{day} Schedule:"]
-    for slot in _display_slots(rows):
-        if slot == "12:00":
-            lines.append("12:00 - Lunch")
-            continue
-        if slot not in rows:
-            lines.append(f"{slot} - Leisure")
-            continue
-        entry = rows[slot]
-        type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
-        lines.append(f"{slot} - {entry.get('subject', '-')}{type_text} (Room {entry.get('room', '-')})")
+    for block in blocks:
+        lines.append(_format_day_block(block))
     return "\n".join(lines)
 
 
@@ -244,7 +242,8 @@ def format_current_room(timetable: dict[str, dict[str, dict[str, str]]], now: da
     current = get_current_class(timetable, now)
     if current is None:
         return "No class right now"
-    _, _, entry = current
+    _, block = current
+    entry = block["entry"]
     return f"Room: {entry.get('room', '-')}"
 
 
@@ -401,14 +400,77 @@ def _slot_start_time(slot: str) -> time:
     return datetime.strptime(slot.strip(), "%H:%M").time()
 
 
-def _slot_range(slot: str, day_time: datetime) -> tuple[time, time]:
-    start_datetime = datetime.combine(day_time.date(), _slot_start_time(slot))
+def _slot_range(slot: str, day_time: datetime | None = None) -> tuple[time, time]:
+    reference_day = _coerce_ist(day_time) if day_time is not None else _now_ist()
+    start_datetime = datetime.combine(reference_day.date(), _slot_start_time(slot))
     end_datetime = start_datetime + timedelta(hours=1)
     return start_datetime.time(), end_datetime.time()
 
 
 def _sorted_slots(rows: dict[str, dict[str, str]]) -> list[str]:
     return sorted(rows, key=_slot_start_time)
+
+
+def _day_blocks(
+    timetable: dict[str, dict[str, dict[str, str]]],
+    day: str,
+    day_time: datetime | None = None,
+) -> list[dict[str, Any]]:
+    rows = timetable.get(day, {})
+    blocks = _merge_class_blocks(rows, day_time)
+    lunch_block = _lunch_block(day_time)
+    if not any(_blocks_overlap(block, lunch_block) for block in blocks):
+        blocks.append(lunch_block)
+    return sorted(blocks, key=lambda block: block["start"])
+
+
+def _merge_class_blocks(rows: dict[str, dict[str, str]], day_time: datetime | None = None) -> list[dict[str, Any]]:
+    merged_blocks: list[dict[str, Any]] = []
+    for slot in _sorted_slots(rows):
+        entry = rows[slot]
+        start, end = _slot_range(slot, day_time)
+        if merged_blocks and _can_merge_block(merged_blocks[-1], entry, start):
+            merged_blocks[-1]["end"] = end
+            merged_blocks[-1]["end_slot"] = _time_to_slot(end)
+            continue
+        merged_blocks.append(
+            {
+                "kind": "class",
+                "entry": entry,
+                "start": start,
+                "end": end,
+                "start_slot": slot,
+                "end_slot": _time_to_slot(end),
+            }
+        )
+    return merged_blocks
+
+
+def _lunch_block(day_time: datetime | None = None) -> dict[str, Any]:
+    start, end = _slot_range(LUNCH_START, day_time)
+    return {
+        "kind": "lunch",
+        "entry": LUNCH_ENTRY,
+        "start": start,
+        "end": end,
+        "start_slot": LUNCH_START,
+        "end_slot": LUNCH_END,
+    }
+
+
+def _can_merge_block(block: dict[str, Any], entry: dict[str, str], next_start: time) -> bool:
+    if block["kind"] != "class":
+        return False
+    return (
+        block["end"] == next_start
+        and block["entry"].get("subject") == entry.get("subject")
+        and block["entry"].get("room") == entry.get("room")
+        and block["entry"].get("type") == entry.get("type")
+    )
+
+
+def _blocks_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    return left["start"] < right["end"] and right["start"] < left["end"]
 
 
 def _now_ist() -> datetime:
@@ -455,3 +517,33 @@ def _format_class(entry: dict[str, str], slot: str, include_end: bool) -> str:
         f"Room: {entry.get('room', '-')}\n"
         f"Time: {time_line}"
     )
+
+
+def _format_block(block: dict[str, Any]) -> str:
+    return _format_entry_with_range(block["entry"], block["start"], block["end"])
+
+
+def _format_day_block(block: dict[str, Any]) -> str:
+    entry = block["entry"]
+    type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
+    return (
+        f"{_time_text(block['start'])} - {_time_text(block['end'])} - "
+        f"{entry.get('subject', '-')}{type_text} (Room {entry.get('room', '-')})"
+    )
+
+
+def _format_entry_with_range(entry: dict[str, str], start: time, end: time) -> str:
+    type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
+    return (
+        f"{entry.get('subject', '-')}{type_text}\n"
+        f"Room: {entry.get('room', '-')}\n"
+        f"Time: {_time_text(start)} - {_time_text(end)}"
+    )
+
+
+def _time_text(value: time) -> str:
+    return value.strftime("%H:%M")
+
+
+def _time_to_slot(value: time) -> str:
+    return value.strftime("%H:%M")

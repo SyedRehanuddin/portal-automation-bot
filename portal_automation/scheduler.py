@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any
 
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -202,8 +203,8 @@ async def send_class_update(application: Application, config: AppConfig, trigger
 
     current = get_current_class(timetable, now)
     next_class = get_next_class(timetable, now)
-    current_slot = current[1] if current else None
-    next_slot = next_class[1] if next_class else None
+    current_slot = current[1]["start_slot"] if current else None
+    next_slot = next_class[1]["start_slot"] if next_class else None
 
     LOGGER.info(
         "Class reminder trigger=%s now=%s current_slot=%s next_slot=%s source=cache",
@@ -218,52 +219,61 @@ async def send_class_update(application: Application, config: AppConfig, trigger
 
 
 def _format_class_update(
-    current: tuple[str, str, dict[str, str]] | None,
-    next_class: tuple[str, str, dict[str, str]] | None,
+    current: tuple[str, dict[str, Any]] | None,
+    next_class: tuple[str, dict[str, Any]] | None,
     trigger_time: str | None,
 ) -> str:
-    if trigger_time == "08:55" and next_class is not None:
-        _, slot, entry = next_class
+    if trigger_time == FIRST_CLASS_REMINDER_TIME and next_class is not None:
+        _, block = next_class
+        entry = block["entry"]
         return (
-            "🔔 First Class Starting Soon\n\n"
-            f"{entry.get('subject', '-')}\n"
+            "First Class Starting Soon\n\n"
+            f"{_entry_label(entry)}\n"
             f"Room: {entry.get('room', '-')}\n"
-            f"Time: {_slot_range_text(slot)}"
+            f"Time: {_block_time_text(block)}"
         )
 
     if current is not None:
-        _, current_slot, current_entry = current
+        _, current_block = current
+        current_entry = current_block["entry"]
         lines = [
-            f"📘 Current: {current_entry.get('subject', '-')} ({_slot_range_text(current_slot)})",
+            f"Current: {_entry_label(current_entry)} ({_block_time_text(current_block)})",
             f"Room: {current_entry.get('room', '-')}",
         ]
         if next_class is not None:
-            _, next_slot, next_entry = next_class
+            _, next_block = next_class
+            next_entry = next_block["entry"]
             lines.extend(
                 [
-                    f"⏭ Next: {next_entry.get('subject', '-')} at {next_slot}",
+                    f"Next: {_entry_label(next_entry)} at {next_block['start_slot']}",
                     f"Room: {next_entry.get('room', '-')}",
                 ]
             )
         else:
-            lines.append("✅ No more classes today")
+            lines.append("No more classes today")
         return "\n".join(lines)
 
     if next_class is not None:
-        _, next_slot, next_entry = next_class
+        _, next_block = next_class
+        next_entry = next_block["entry"]
         return (
-            "😎 Free now\n"
-            f"⏭ Next: {next_entry.get('subject', '-')} at {next_slot}\n"
+            "Free now\n"
+            f"Next: {_entry_label(next_entry)} at {next_block['start_slot']}\n"
             f"Room: {next_entry.get('room', '-')}"
         )
 
-    return "✅ No more classes today"
+    return "No more classes today"
 
 
-def _slot_range_text(slot: str) -> str:
-    start = datetime.strptime(slot, "%H:%M")
-    end = start + timedelta(hours=1)
-    return f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
+def _block_time_text(block: dict[str, Any]) -> str:
+    start = block["start"]
+    end = block["end"]
+    return f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}"
+
+
+def _entry_label(entry: dict[str, Any]) -> str:
+    type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
+    return f"{entry.get('subject', '-')}{type_text}"
 
 
 def _has_day_cache(timetable: dict[str, dict[str, dict[str, str]]], now: datetime) -> bool:
@@ -294,10 +304,7 @@ def _scheduler_enabled() -> bool:
 
 def _format_total_attendance(state: dict) -> str:
     attendance = state.get("attendance") or {}
-    return (
-        f"Attendance: {attendance.get('overall_percent', '-')}%\n"
-        f"{_format_last_updated(state)}"
-    )
+    return f"Attendance: {attendance.get('overall_percent', '-')}%\n{_format_last_updated(state)}"
 
 
 def _format_last_updated(state: dict) -> str:
