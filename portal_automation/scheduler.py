@@ -186,24 +186,18 @@ async def send_class_update(application: Application, config: AppConfig, trigger
         )
         return
 
-    timetable = get_cached_timetable(config)
+    timetable, source = await _load_timetable_for_reminder(config, now, trigger_time)
     if not timetable:
-        LOGGER.warning(
-            "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=cache status=missing_cache",
-            trigger_time or now.strftime("%H:%M"),
-            now.isoformat(timespec="seconds"),
-            now.strftime("%A"),
-            sorted(timetable),
-        )
         return
 
     if not _has_day_cache(timetable, now):
         LOGGER.info(
-            "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=cache status=no_classes_today",
+            "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=%s status=no_classes_today",
             trigger_time or now.strftime("%H:%M"),
             now.isoformat(timespec="seconds"),
             now.strftime("%A"),
             sorted(timetable),
+            source,
         )
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
@@ -217,11 +211,12 @@ async def send_class_update(application: Application, config: AppConfig, trigger
     next_slot = next_class[1]["start_slot"] if next_class else None
 
     LOGGER.info(
-        "Class reminder trigger=%s now=%s current_slot=%s next_slot=%s source=cache",
+        "Class reminder trigger=%s now=%s current_slot=%s next_slot=%s source=%s",
         trigger_time or now.strftime("%H:%M"),
         now.isoformat(timespec="seconds"),
         current_slot,
         next_slot,
+        source,
     )
 
     message = _format_class_update(current, next_class, trigger_time)
@@ -273,6 +268,36 @@ def _format_class_update(
         )
 
     return "No more classes today"
+
+
+async def _load_timetable_for_reminder(
+    config: AppConfig,
+    now: datetime,
+    trigger_time: str | None,
+) -> tuple[dict[str, dict[str, dict[str, str]]], str]:
+    timetable = get_cached_timetable(config)
+    if timetable and _has_day_cache(timetable, now):
+        return timetable, "cache"
+
+    LOGGER.warning(
+        "Class reminder trigger=%s now=%s weekday=%s cached_days=%s source=cache status=refreshing_missing_cache",
+        trigger_time or now.strftime("%H:%M"),
+        now.isoformat(timespec="seconds"),
+        now.strftime("%A"),
+        sorted(timetable),
+    )
+
+    try:
+        refreshed = await asyncio.to_thread(get_timetable, config, True)
+    except Exception:
+        LOGGER.exception(
+            "Class reminder trigger=%s now=%s weekday=%s source=live status=refresh_failed",
+            trigger_time or now.strftime("%H:%M"),
+            now.isoformat(timespec="seconds"),
+            now.strftime("%A"),
+        )
+        return {}, "live_failed"
+    return refreshed, "live_refresh"
 
 
 def _block_time_text(block: dict[str, Any]) -> str:

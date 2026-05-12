@@ -356,7 +356,7 @@ async def _reply_timetable(update: Update, context: ContextTypes.DEFAULT_TYPE, i
         return
 
     try:
-        timetable_data = get_cached_timetable(config)
+        timetable_data = await _get_timetable_for_request(context, config, intent)
         if not timetable_data:
             await _reply(update, "Timetable not available right now.")
             return
@@ -380,6 +380,17 @@ async def _reply_timetable(update: Update, context: ContextTypes.DEFAULT_TYPE, i
         await _reply(update, format_current_room(timetable_data), reply_markup=_timetable_keyboard())
 
 
+async def _get_timetable_for_request(
+    context: ContextTypes.DEFAULT_TYPE,
+    config: AppConfig,
+    intent: str,
+) -> dict[str, dict[str, dict[str, str]]]:
+    timetable_data = get_cached_timetable(config)
+    if timetable_data and _timetable_request_cache_ok(timetable_data, intent):
+        return timetable_data
+    return await _get_timetable_locked(context, config, force_refresh=True)
+
+
 async def _get_timetable_locked(
     context: ContextTypes.DEFAULT_TYPE,
     config: AppConfig,
@@ -392,6 +403,15 @@ async def _get_timetable_locked(
 
     async with lock:
         return await asyncio.to_thread(get_timetable, config, force_refresh)
+
+
+def _timetable_request_cache_ok(timetable_data: dict[str, dict[str, dict[str, str]]], intent: str) -> bool:
+    if not timetable_data:
+        return False
+    if intent == "week":
+        return True
+    weekday = datetime.now(IST).strftime("%A")
+    return bool(timetable_data.get(weekday))
 
 
 def build_assistant_response(state: dict[str, Any], section: str) -> str:
