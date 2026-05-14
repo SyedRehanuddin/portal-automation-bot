@@ -30,6 +30,7 @@ TIMES = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00",
 LUNCH_START = "12:00"
 LUNCH_END = "13:00"
 LUNCH_ENTRY = {"subject": "Lunch Break", "room": "-", "type": ""}
+LEISURE_ENTRY = {"subject": "Leisure", "room": "-", "type": ""}
 
 
 class TimetableError(RuntimeError):
@@ -220,7 +221,7 @@ def format_day(timetable: dict[str, dict[str, dict[str, str]]], day: str) -> str
     if day not in DAYS:
         return f"{day} Schedule:\nNo classes"
 
-    blocks = _day_blocks(timetable, day)
+    blocks = _day_blocks_with_gaps(timetable, day)
     class_blocks = [block for block in blocks if block["kind"] == "class"]
     if not class_blocks:
         return f"{day} Schedule:\nNo classes"
@@ -424,6 +425,24 @@ def _day_blocks(
     return sorted(blocks, key=lambda block: block["start"])
 
 
+def _day_blocks_with_gaps(
+    timetable: dict[str, dict[str, dict[str, str]]],
+    day: str,
+    day_time: datetime | None = None,
+) -> list[dict[str, Any]]:
+    blocks = _day_blocks(timetable, day, day_time)
+    if not blocks:
+        return []
+
+    filled: list[dict[str, Any]] = [blocks[0]]
+    for block in blocks[1:]:
+        previous = filled[-1]
+        if previous["end"] < block["start"]:
+            filled.append(_leisure_block(previous["end"], block["start"]))
+        filled.append(block)
+    return filled
+
+
 def _merge_class_blocks(rows: dict[str, dict[str, str]], day_time: datetime | None = None) -> list[dict[str, Any]]:
     merged_blocks: list[dict[str, Any]] = []
     for slot in _sorted_slots(rows):
@@ -455,6 +474,17 @@ def _lunch_block(day_time: datetime | None = None) -> dict[str, Any]:
         "end": end,
         "start_slot": LUNCH_START,
         "end_slot": LUNCH_END,
+    }
+
+
+def _leisure_block(start: time, end: time) -> dict[str, Any]:
+    return {
+        "kind": "leisure",
+        "entry": LEISURE_ENTRY,
+        "start": start,
+        "end": end,
+        "start_slot": _time_to_slot(start),
+        "end_slot": _time_to_slot(end),
     }
 
 
@@ -555,4 +585,4 @@ def _time_to_slot(value: time) -> str:
 def _show_room(entry: dict[str, str]) -> bool:
     subject = entry.get("subject", "").strip().lower()
     room = entry.get("room", "").strip()
-    return subject != "lunch break" and room not in {"", "-"}
+    return subject not in {"lunch break", "leisure"} and room not in {"", "-"}
