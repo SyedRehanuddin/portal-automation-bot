@@ -231,43 +231,42 @@ def _format_class_update(
     if trigger_time == FIRST_CLASS_REMINDER_TIME and next_class is not None:
         _, block = next_class
         entry = block["entry"]
-        return (
-            "First Class Starting Soon\n\n"
-            f"{_entry_label(entry)}\n"
-            f"Room: {entry.get('room', '-')}\n"
-            f"Time: {_block_time_text(block)}"
-        )
+        lines = ["<b>First Class Starting Soon</b>", "", _entry_label(entry)]
+        if _show_room(entry):
+            lines.append(f"Room: {entry.get('room', '-')}")
+        lines.append(f"Time: {_block_time_text(block)}")
+        return "\n".join(lines)
 
     if current is not None:
         _, current_block = current
         current_entry = current_block["entry"]
         lines = [
-            f"Current: {_entry_label(current_entry)} ({_block_time_text(current_block)})",
-            f"Room: {current_entry.get('room', '-')}",
+            f"<b>Current:</b> {_entry_label(current_entry)} ({_block_time_text(current_block)})",
         ]
+        if _show_room(current_entry):
+            lines.append(f"Room: {current_entry.get('room', '-')}")
         if next_class is not None:
             _, next_block = next_class
             next_entry = next_block["entry"]
-            lines.extend(
-                [
-                    f"Next: {_entry_label(next_entry)} at {next_block['start_slot']}",
-                    f"Room: {next_entry.get('room', '-')}",
-                ]
-            )
+            lines.append(f"<b>Next:</b> {_entry_label(next_entry)} at {next_block['start_slot']}")
+            if _show_room(next_entry):
+                lines.append(f"Room: {next_entry.get('room', '-')}")
         else:
-            lines.append("No more classes today")
+            lines.append("<b>No more classes today</b>")
         return "\n".join(lines)
 
     if next_class is not None:
         _, next_block = next_class
         next_entry = next_block["entry"]
-        return (
-            "Free now\n"
-            f"Next: {_entry_label(next_entry)} at {next_block['start_slot']}\n"
-            f"Room: {next_entry.get('room', '-')}"
-        )
+        lines = [
+            "<b>Free now</b>",
+            f"<b>Next:</b> {_entry_label(next_entry)} at {next_block['start_slot']}",
+        ]
+        if _show_room(next_entry):
+            lines.append(f"Room: {next_entry.get('room', '-')}")
+        return "\n".join(lines)
 
-    return "No more classes today"
+    return "<b>No more classes today</b>"
 
 
 async def _load_timetable_for_reminder(
@@ -309,6 +308,12 @@ def _block_time_text(block: dict[str, Any]) -> str:
 def _entry_label(entry: dict[str, Any]) -> str:
     type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
     return f"{entry.get('subject', '-')}{type_text}"
+
+
+def _show_room(entry: dict[str, Any]) -> bool:
+    subject = str(entry.get("subject", "")).strip().lower()
+    room = str(entry.get("room", "")).strip()
+    return subject != "lunch break" and room not in {"", "-"}
 
 
 def _has_day_cache(timetable: dict[str, dict[str, dict[str, str]]], now: datetime) -> bool:

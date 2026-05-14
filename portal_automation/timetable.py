@@ -526,19 +526,22 @@ def _format_block(block: dict[str, Any]) -> str:
 def _format_day_block(block: dict[str, Any]) -> str:
     entry = block["entry"]
     type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
+    room_text = f" (Room {entry.get('room', '-')})" if _show_room(entry) else ""
     return (
         f"{_time_text(block['start'])} - {_time_text(block['end'])} - "
-        f"{entry.get('subject', '-')}{type_text} (Room {entry.get('room', '-')})"
+        f"{entry.get('subject', '-')}{type_text}{room_text}"
     )
 
 
 def _format_entry_with_range(entry: dict[str, str], start: time, end: time) -> str:
     type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
-    return (
-        f"{entry.get('subject', '-')}{type_text}\n"
-        f"Room: {entry.get('room', '-')}\n"
-        f"Time: {_time_text(start)} - {_time_text(end)}"
-    )
+    lines = [
+        f"{entry.get('subject', '-')}{type_text}",
+    ]
+    if _show_room(entry):
+        lines.append(f"Room: {entry.get('room', '-')}")
+    lines.append(f"Time: {_time_text(start)} - {_time_text(end)}")
+    return "\n".join(lines)
 
 
 def _time_text(value: time) -> str:
@@ -547,3 +550,9 @@ def _time_text(value: time) -> str:
 
 def _time_to_slot(value: time) -> str:
     return value.strftime("%H:%M")
+
+
+def _show_room(entry: dict[str, str]) -> bool:
+    subject = entry.get("subject", "").strip().lower()
+    room = entry.get("room", "").strip()
+    return subject != "lunch break" and room not in {"", "-"}
