@@ -7,13 +7,22 @@ from datetime import datetime
 from typing import Any
 
 import pytz
+from telegram.constants import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from telegram.ext import Application
 
 from .config import AppConfig
 from .storage import read_json
-from .timetable import format_today, get_cached_timetable, get_current_class, get_next_class, get_timetable
+from .timetable import (
+    format_block_start,
+    format_display_range,
+    format_today,
+    get_cached_timetable,
+    get_current_class,
+    get_next_class,
+    get_timetable,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -112,6 +121,7 @@ async def refresh_and_send_daily_schedule(application: Application, config: AppC
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
             text="Timetable refresh failed at 08:50. Try /schedule once.",
+            parse_mode=ParseMode.HTML,
         )
         return
 
@@ -119,12 +129,14 @@ async def refresh_and_send_daily_schedule(application: Application, config: AppC
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
             text=f"Updated timetable found no classes for {now.strftime('%A')}.",
+            parse_mode=ParseMode.HTML,
         )
         return
 
     await application.bot.send_message(
         chat_id=config.credentials.telegram_chat_id,
         text=format_today(timetable, now),
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -153,6 +165,7 @@ async def send_total_attendance_update(application: Application, config: AppConf
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
             text=f"Attendance refresh failed: {_short_error(exc)}",
+            parse_mode=ParseMode.HTML,
         )
         return
 
@@ -167,12 +180,14 @@ async def send_total_attendance_update(application: Application, config: AppConf
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
             text="No saved attendance data yet. Run /analyze once.",
+            parse_mode=ParseMode.HTML,
         )
         return
 
     await application.bot.send_message(
         chat_id=config.credentials.telegram_chat_id,
         text=_format_total_attendance(state),
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -202,6 +217,7 @@ async def send_class_update(application: Application, config: AppConfig, trigger
         await application.bot.send_message(
             chat_id=config.credentials.telegram_chat_id,
             text="No classes today",
+            parse_mode=ParseMode.HTML,
         )
         return
 
@@ -220,7 +236,11 @@ async def send_class_update(application: Application, config: AppConfig, trigger
     )
 
     message = _format_class_update(current, next_class, trigger_time)
-    await application.bot.send_message(chat_id=config.credentials.telegram_chat_id, text=message)
+    await application.bot.send_message(
+        chat_id=config.credentials.telegram_chat_id,
+        text=message,
+        parse_mode=ParseMode.HTML,
+    )
 
 
 def _format_class_update(
@@ -231,7 +251,7 @@ def _format_class_update(
     if trigger_time == FIRST_CLASS_REMINDER_TIME and next_class is not None:
         _, block = next_class
         entry = block["entry"]
-        lines = ["<b>First Class Starting Soon</b>", "", _entry_label(entry)]
+        lines = ["<b>🔔 First Class Starting Soon</b>", "", _entry_label(entry)]
         if _show_room(entry):
             lines.append(f"Room: {entry.get('room', '-')}")
         lines.append(f"Time: {_block_time_text(block)}")
@@ -241,14 +261,14 @@ def _format_class_update(
         _, current_block = current
         current_entry = current_block["entry"]
         lines = [
-            f"<b>Current:</b> {_entry_label(current_entry)} ({_block_time_text(current_block)})",
+            f"<b>📘 Current:</b> {_entry_label(current_entry)} ({_block_time_text(current_block)})",
         ]
         if _show_room(current_entry):
             lines.append(f"Room: {current_entry.get('room', '-')}")
         if next_class is not None:
             _, next_block = next_class
             next_entry = next_block["entry"]
-            lines.append(f"<b>Next:</b> {_entry_label(next_entry)} at {next_block['start_slot']}")
+            lines.append(f"<b>⏭ Next:</b> {_entry_label(next_entry)} at {format_block_start(next_block)}")
             if _show_room(next_entry):
                 lines.append(f"Room: {next_entry.get('room', '-')}")
         else:
@@ -260,7 +280,7 @@ def _format_class_update(
         next_entry = next_block["entry"]
         lines = [
             "<b>Free now</b>",
-            f"<b>Next:</b> {_entry_label(next_entry)} at {next_block['start_slot']}",
+            f"<b>⏭ Next:</b> {_entry_label(next_entry)} at {format_block_start(next_block)}",
         ]
         if _show_room(next_entry):
             lines.append(f"Room: {next_entry.get('room', '-')}")
@@ -300,9 +320,7 @@ async def _load_timetable_for_reminder(
 
 
 def _block_time_text(block: dict[str, Any]) -> str:
-    start = block["start"]
-    end = block["end"]
-    return f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}"
+    return format_display_range(block["start"], block["end"])
 
 
 def _entry_label(entry: dict[str, Any]) -> str:

@@ -193,9 +193,9 @@ def format_now(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | 
         return "Holiday"
     current = get_current_class(timetable, now)
     if current is None:
-        return "No class right now"
+        return "<b>Free now</b>"
     _, block = current
-    return _format_block(block)
+    return _format_current_block(block)
 
 
 def format_next(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
@@ -204,9 +204,9 @@ def format_next(timetable: dict[str, dict[str, dict[str, str]]], now: datetime |
         return "Holiday"
     next_class = get_next_class(timetable, now)
     if next_class is None:
-        return "No more classes today"
+        return "<b>No more classes today</b>"
     _, block = next_class
-    return "Next Class:\n" + _format_block(block)
+    return _format_next_block(block)
 
 
 def format_today(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
@@ -242,10 +242,22 @@ def format_week(timetable: dict[str, dict[str, dict[str, str]]]) -> str:
 def format_current_room(timetable: dict[str, dict[str, dict[str, str]]], now: datetime | None = None) -> str:
     current = get_current_class(timetable, now)
     if current is None:
-        return "No class right now"
+        return "<b>Free now</b>"
     _, block = current
     entry = block["entry"]
     return f"Room: {entry.get('room', '-')}"
+
+
+def format_display_time(value: time) -> str:
+    return value.strftime("%I:%M %p").lstrip("0")
+
+
+def format_display_range(start: time, end: time) -> str:
+    return f"{format_display_time(start)} – {format_display_time(end)}"
+
+
+def format_block_start(block: dict[str, Any]) -> str:
+    return format_display_time(block["start"])
 
 
 def _select_value(wait: WebDriverWait, element_id: str, value: str) -> None:
@@ -539,8 +551,9 @@ def _display_slots(rows: dict[str, dict[str, str]]) -> list[str]:
 
 
 def _format_class(entry: dict[str, str], slot: str, include_end: bool) -> str:
-    end_time = (datetime.combine(datetime.today(), time.fromisoformat(slot)) + timedelta(hours=1)).strftime("%H:%M")
-    time_line = f"{slot} - {end_time}" if include_end else slot
+    start_time = time.fromisoformat(slot)
+    end_time = (datetime.combine(datetime.today(), start_time) + timedelta(hours=1)).time()
+    time_line = format_display_range(start_time, end_time) if include_end else format_display_time(start_time)
     type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
     return (
         f"{entry.get('subject', '-')}{type_text}\n"
@@ -553,12 +566,28 @@ def _format_block(block: dict[str, Any]) -> str:
     return _format_entry_with_range(block["entry"], block["start"], block["end"])
 
 
+def _format_current_block(block: dict[str, Any]) -> str:
+    entry = block["entry"]
+    lines = [f"<b>📘 Current:</b> {_entry_label(entry)} ({format_display_range(block['start'], block['end'])})"]
+    if _show_room(entry):
+        lines.append(f"Room: {entry.get('room', '-')}")
+    return "\n".join(lines)
+
+
+def _format_next_block(block: dict[str, Any]) -> str:
+    entry = block["entry"]
+    lines = [f"<b>⏭ Next:</b> {_entry_label(entry)} at {format_display_time(block['start'])}"]
+    if _show_room(entry):
+        lines.append(f"Room: {entry.get('room', '-')}")
+    return "\n".join(lines)
+
+
 def _format_day_block(block: dict[str, Any]) -> str:
     entry = block["entry"]
     type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
     room_text = f" (Room {entry.get('room', '-')})" if _show_room(entry) else ""
     return (
-        f"{_time_text(block['start'])} - {_time_text(block['end'])} - "
+        f"{format_display_range(block['start'], block['end'])} - "
         f"{entry.get('subject', '-')}{type_text}{room_text}"
     )
 
@@ -570,12 +599,17 @@ def _format_entry_with_range(entry: dict[str, str], start: time, end: time) -> s
     ]
     if _show_room(entry):
         lines.append(f"Room: {entry.get('room', '-')}")
-    lines.append(f"Time: {_time_text(start)} - {_time_text(end)}")
+    lines.append(f"Time: {format_display_range(start, end)}")
     return "\n".join(lines)
 
 
 def _time_text(value: time) -> str:
-    return value.strftime("%H:%M")
+    return format_display_time(value)
+
+
+def _entry_label(entry: dict[str, str]) -> str:
+    type_text = f" [{entry.get('type')}]" if entry.get("type") else ""
+    return f"{entry.get('subject', '-')}{type_text}"
 
 
 def _time_to_slot(value: time) -> str:
