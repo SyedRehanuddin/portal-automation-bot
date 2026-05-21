@@ -15,6 +15,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 from selenium.common.exceptions import WebDriverException
 
+from .bot_sleep import clear_sleep, format_wake_time, is_sleeping, sleep_until_next_wakeup
 from .browser import PortalBrowser, validate_cookie_session
 from .config import AppConfig, load_config
 from .diffing import build_change_messages
@@ -43,6 +44,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
     if not _authorized(update, config):
         return
+    if await _sleep_guard(update, context, config):
+        return
 
     await _reply(
         update,
@@ -55,28 +58,70 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     config = _config(context)
     if not _authorized(update, config):
         return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply(update, _help_message())
 
 
 async def attendance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_summary(update, context, "attendance")
 
 
 async def marks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_summary(update, context, "marks")
 
 
 async def total(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_summary(update, context, "total")
 
 
 async def all_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_summary(update, context, "all")
+
+
+async def off(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+
+    wake_at = sleep_until_next_wakeup(config)
+    await _reply(update, f"Bot paused until <b>{_escape_text(format_wake_time(wake_at))}</b>.")
+
+
+async def on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+
+    clear_sleep(config)
+    await _reply(update, "Bot resumed.")
 
 
 async def captcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
     if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
         return
 
     code = " ".join(context.args).strip()
@@ -103,24 +148,46 @@ async def captcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def timetable(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_timetable(update, context, "week")
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_timetable(update, context, "today")
 
 
 async def now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_timetable(update, context, "now")
 
 
 async def next_class(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = _config(context)
+    if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
+        return
     await _reply_timetable(update, context, "next")
 
 
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
     if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
         return
 
     await _reply(update, "Checking timetable...")
@@ -148,6 +215,8 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def natural_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
     if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
         return
 
     text = (update.effective_message.text if update.effective_message else "").lower()
@@ -182,6 +251,8 @@ async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
     if not _authorized(update, config):
         return
+    if await _sleep_guard(update, context, config):
+        return
 
     await _reply(update, "Checking for changes...")
     try:
@@ -200,6 +271,8 @@ async def check_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
     if not _authorized(update, config):
+        return
+    if await _sleep_guard(update, context, config):
         return
 
     await _reply(update, "Checking everything... ⏳")
@@ -225,6 +298,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
 
     action = (query.data or "").removeprefix("ui:")
+    if action == "off":
+        wake_at = sleep_until_next_wakeup(config)
+        await _reply(update, f"Bot paused until <b>{_escape_text(format_wake_time(wake_at))}</b>.")
+        return
+    if action == "on":
+        clear_sleep(config)
+        await _reply(update, "Bot resumed.")
+        return
+    if await _sleep_guard(update, context, config):
+        return
     if action == "menu":
         await _reply(update, _dashboard_message(), reply_markup=_dashboard_keyboard())
     elif action == "attendance":
@@ -255,6 +338,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def monitor_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     config = _config(context)
+    sleeping, wake_at = is_sleeping(config)
+    if sleeping:
+        LOGGER.info("Skipping background monitor while bot is paused until %s", wake_at.isoformat(timespec="seconds"))
+        return
     try:
         messages, _ = await _run_check_locked(context, config, compare=True)
     except Exception as exc:
@@ -575,6 +662,9 @@ def _dashboard_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton("Refresh Timetable", callback_data="ui:schedule"),
             ],
+            [
+                InlineKeyboardButton("Off Until 8:50", callback_data="ui:off"),
+            ],
         ]
     )
 
@@ -596,6 +686,7 @@ def _portal_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton("Menu", callback_data="ui:menu"),
+                InlineKeyboardButton("Off", callback_data="ui:off"),
             ],
         ]
     )
@@ -612,6 +703,9 @@ def _timetable_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton("Full Week", callback_data="ui:week"),
                 InlineKeyboardButton("Menu", callback_data="ui:menu"),
+            ],
+            [
+                InlineKeyboardButton("Off", callback_data="ui:off"),
             ],
         ]
     )
@@ -630,6 +724,8 @@ def _menu_message() -> str:
         "/today - today's schedule\n"
         "/now - current class\n"
         "/next - next class\n"
+        "/off - pause bot until next 8:50 AM\n"
+        "/on - resume bot now\n"
         "/captcha CODE - answer portal CAPTCHA when asked"
     )
 
@@ -694,6 +790,8 @@ def build_application(config: AppConfig) -> Application:
     application.add_handler(CommandHandler("marks", marks))
     application.add_handler(CommandHandler("total", total))
     application.add_handler(CommandHandler("all", all_data))
+    application.add_handler(CommandHandler("off", off))
+    application.add_handler(CommandHandler("on", on))
     application.add_handler(CommandHandler("captcha", captcha))
     application.add_handler(CommandHandler("check", check_now))
     application.add_handler(CommandHandler("analyze", analyze))
@@ -726,6 +824,8 @@ async def setup_bot_commands(application: Application) -> None:
                 BotCommand("total", "Total attendance"),
                 BotCommand("marks", "CIE / ETE marks"),
                 BotCommand("all", "All saved data"),
+                BotCommand("off", "Pause until next 8:50 AM"),
+                BotCommand("on", "Resume now"),
                 BotCommand("schedule", "Refresh timetable"),
                 BotCommand("today", "Today's schedule"),
                 BotCommand("now", "Current class"),
@@ -742,6 +842,21 @@ def _background_monitor_enabled(config: AppConfig) -> bool:
     if env_value:
         return env_value in {"1", "true", "yes", "on"}
     return bool(config.monitoring.get("background_enabled", False))
+
+
+async def _sleep_guard(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    config: AppConfig,
+) -> bool:
+    sleeping, wake_at = is_sleeping(config)
+    if not sleeping or wake_at is None:
+        return False
+    await _reply(
+        update,
+        f"Bot is paused until <b>{_escape_text(format_wake_time(wake_at))}</b>.\nUse /on if you want to resume early.",
+    )
+    return True
 
 
 def main() -> int:

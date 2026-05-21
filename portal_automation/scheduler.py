@@ -12,6 +12,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from telegram.ext import Application
 
+from .bot_sleep import is_sleeping
 from .config import AppConfig
 from .storage import read_json
 from .timetable import (
@@ -104,6 +105,13 @@ async def shutdown_scheduler(scheduler: AsyncIOScheduler | None) -> None:
 
 async def refresh_and_send_daily_schedule(application: Application, config: AppConfig) -> None:
     now = datetime.now(IST)
+    sleeping, wake_at = is_sleeping(config, now)
+    if sleeping:
+        LOGGER.info(
+            "Skipping daily timetable refresh while bot is paused until %s",
+            wake_at.isoformat(timespec="seconds") if wake_at else "-",
+        )
+        return
     if _is_weekend(now):
         LOGGER.info("Skipping daily timetable refresh on weekend: %s", now.strftime("%A"))
         return
@@ -142,6 +150,14 @@ async def refresh_and_send_daily_schedule(application: Application, config: AppC
 
 async def send_total_attendance_update(application: Application, config: AppConfig, trigger_time: str | None = None) -> None:
     now = datetime.now(IST)
+    sleeping, wake_at = is_sleeping(config, now)
+    if sleeping:
+        LOGGER.info(
+            "Skipping attendance refresh trigger=%s while bot is paused until %s",
+            trigger_time or now.strftime("%H:%M"),
+            wake_at.isoformat(timespec="seconds") if wake_at else "-",
+        )
+        return
     if _is_weekend(now):
         LOGGER.info(
             "Skipping attendance refresh trigger=%s on weekend: %s",
@@ -193,6 +209,14 @@ async def send_total_attendance_update(application: Application, config: AppConf
 
 async def send_class_update(application: Application, config: AppConfig, trigger_time: str | None = None) -> None:
     now = datetime.now(IST)
+    sleeping, wake_at = is_sleeping(config, now)
+    if sleeping:
+        LOGGER.info(
+            "Skipping class reminder trigger=%s while bot is paused until %s",
+            trigger_time or now.strftime("%H:%M"),
+            wake_at.isoformat(timespec="seconds") if wake_at else "-",
+        )
+        return
     if _is_weekend(now):
         LOGGER.info(
             "Skipping class reminder trigger=%s on weekend: %s",
